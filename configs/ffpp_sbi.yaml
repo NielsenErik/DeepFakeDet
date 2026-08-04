@@ -1,0 +1,55 @@
+# SBI arm: the circuit fitted over an artifact-tuned encoder.
+#
+# The encoder is an EfficientNet-B4 trained under the SBI protocol (FF++ real
+# frames + self-blends; no real forgery ever seen).  The circuit is then fitted
+# on ITS patch features, again on real faces only.  This is the configuration
+# with a realistic path to state-of-the-art cross-dataset numbers, because the
+# POC established that frozen semantic features carry no artifact signal.
+#
+# Run `pcdf train-sbi` before `pcdf features` with this config.
+root: /home/jawa17/deepfake_data
+seed: 0
+device: cuda
+
+data:
+  ffpp_root: raw/ffpp/FaceForensics++_C23
+  splits_dir: .
+  n_frames_train: 32
+  n_frames_test: 32
+  crop_size: 256
+  margin: 1.3
+  detector: mediapipe
+  workers: 8
+  include_dfd: false
+
+features:
+  backbone: sbi
+  backbone_kwargs:
+    checkpoint: /home/jawa17/deepfake_data/models/sbi_effnetb4.pt
+    arch: tf_efficientnet_b4_ns
+    grid: 8
+    input_size: 380
+  batch: 64
+  grid: 8
+  out_dim: 16              # channels per patch after whitening -> d = 1024
+  whiten: true
+  max_projector_images: 20000
+
+pc:
+  n_sum_components: 8
+  n_input_components: 8
+  leaf_components: 4
+  patch_method: kd         # spatial prior; ablated against orc / chow_liu
+  channel_method: orc      # Ollivier-Ricci curvature cuts over channels
+  max_arity: 4
+  epochs: 60
+  batch_size: 256
+  lr: 0.005
+  patience: 8
+  topq: 0.05
+
+baselines: [mahalanobis, gmm, patchcore, flow]
+
+eval:
+  test_datasets: [ffpp]
+  robustness: [clean, jpeg70, jpeg50, resize0.5, blur]
