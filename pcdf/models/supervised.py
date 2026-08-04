@@ -39,7 +39,7 @@ from ..device import autocast_kwargs, resolve_device
 
 @dataclass
 class SbiConfig:
-    arch: str = "tf_efficientnet_b4_ns"
+    arch: str = "tf_efficientnet_b4.ns_jft_in1k"
     image_size: int = 380
     batch_size: int = 24
     epochs: int = 30

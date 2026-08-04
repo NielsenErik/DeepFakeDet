@@ -26,7 +26,7 @@ features:
   backbone: sbi
   backbone_kwargs:
     checkpoint: /home/jawa17/deepfake_data/models/sbi_effnetb4.pt
-    arch: tf_efficientnet_b4_ns
+    arch: tf_efficientnet_b4.ns_jft_in1k
     grid: 8
     input_size: 380
   batch: 64

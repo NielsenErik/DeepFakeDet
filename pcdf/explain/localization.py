@@ -135,7 +135,9 @@ def run_localization(cfg: Dict, tag: str, n_images: int = 1000,
     from ..stages import _load_split
 
     root = Path(cfg["root"])
-    grid, c = cfg["features"]["grid"], cfg["features"]["out_dim"]
+    from ..stages import _feature_dims
+
+    grid, c = _feature_dims(cfg)
     Z, idx = _load_split(cfg, "test", dataset=dataset, label=1)
     if len(Z) > n_images:
         sel = np.random.default_rng(cfg["seed"]).choice(len(Z), n_images, replace=False)

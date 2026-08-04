@@ -18,6 +18,10 @@ Available streams:
   sbi       patch grid from an EfficientNet-B4 trained under the SBI protocol
             (real frames + self-blends only); an *artifact-tuned* space, which
             is the representation-side answer to the POC failure
+  spectral  per-patch noise-residual SPECTRUM and autocorrelation, after Corvi
+            et al. (CVPRW 2023) — the domain in which synthetic content is
+            genuinely atypical rather than over-typical; the corrective for the
+            central negative result (see STATUS.md)
   srm       hand-built local forensic descriptor over a patch grid: SRM
             high-pass residual moments, radial DCT band energies and local
             color statistics — no learned component, so it isolates how much of
@@ -118,7 +122,7 @@ class SbiEncoderExtractor(PatchExtractor):
     so the circuit's region graph can stay the same across representations.
     """
 
-    def __init__(self, checkpoint: str, arch: str = "tf_efficientnet_b4_ns",
+    def __init__(self, checkpoint: str, arch: str = "tf_efficientnet_b4.ns_jft_in1k",
                  grid: int = 8, input_size: int = 380):
         super().__init__()
         import timm
@@ -210,6 +214,98 @@ class SrmPatchExtractor(PatchExtractor):
         return feats.transpose(1, 2).contiguous()                  # (B, P, C)
 
 
+class SpectralResidualExtractor(PatchExtractor):
+    """
+    Per-patch noise-residual spectrum, following the analysis in "Intriguing
+    properties of synthetic images: from GANs to diffusion models"
+    (Corvi et al., CVPRW 2023).
+
+    Why this exists: the CLIP arm established that in a semantic space fakes are
+    MORE typical than reals, which breaks the low-density assumption the whole
+    method rests on.  Corvi et al. give the domain where the opposite holds —
+    the noise residual.  A real camera image carries a sensor-noise floor with
+    broadly flat, aperiodic high-frequency content; synthetic content lacks it
+    and instead carries PERIODIC traces of the generator's upsampling.  In that
+    domain a forgery should be genuinely out-of-distribution, i.e. low-density,
+    which is exactly what a density model needs.
+
+    Three design choices follow from the paper, and each is a correction of the
+    `srm` extractor in this same file:
+
+    1. NO RADIAL AVERAGING.  Generator fingerprints are discrete peaks at
+       specific (fx, fy) — a radial profile averages them away.  Here the 2D
+       log-spectrum is pooled onto a coarse 2D grid that preserves peak
+       LOCATION.
+    2. AUTOCORRELATION AT SMALL LAGS.  Periodic upsampling traces appear as
+       off-centre autocorrelation peaks of the residual; a few lags capture
+       them compactly.
+    3. NO RESAMPLING INSIDE THE EXTRACTOR.  Resizing attenuates precisely these
+       cues, so the crop is used at its stored resolution when it already
+       matches (`input_size`), and the high-frequency energy ratio — the
+       paper's "synthetic images are too smooth" statistic — is measured
+       explicitly.
+    """
+
+    def __init__(self, grid: int = 8, input_size: int = 256,
+                 spec_cells: int = 6, max_lag: int = 3):
+        super().__init__()
+        self.register_buffer("srm", _SRM_KERNELS.unsqueeze(1))
+        self.spec_cells = spec_cells
+        self.max_lag = max_lag
+        n_lags = (2 * max_lag + 1) ** 2 - 1          # autocorrelation, minus lag 0
+        dim = spec_cells * spec_cells + n_lags + 3 * 3 + 2
+        self.spec = FeatureSpec("spectral", grid, dim, input_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B = x.shape[0]
+        g, S = self.spec.grid, self.spec.input_size
+        if x.shape[-1] != S:                          # only if truly necessary
+            x = F.interpolate(x, size=(S, S), mode="bilinear", align_corners=False)
+        ps = S // g
+
+        # ── noise residual: high-pass, the domain the paper works in ──────
+        gray = x.mean(1, keepdim=True)
+        res = F.conv2d(gray, self.srm.to(x.dtype), padding=2)      # (B,3,S,S)
+        r = res[:, :1]                                             # main residual
+        rp = r.unfold(2, ps, ps).unfold(3, ps, ps).reshape(B, g * g, ps, ps)
+
+        # ── 1. 2D log-spectrum pooled on a grid (peaks keep their place) ──
+        spec = torch.fft.fft2(rp, norm="ortho")
+        spec = torch.fft.fftshift(spec, dim=(-2, -1)).abs().add(1e-8).log()
+        # normalise per patch so absolute contrast does not dominate
+        spec = spec - spec.mean(dim=(-2, -1), keepdim=True)
+        cells = F.adaptive_avg_pool2d(spec, self.spec_cells)       # (B,P,c,c)
+        cells = cells.flatten(2)                                   # (B,P,c*c)
+
+        # ── 2. autocorrelation of the residual at small lags ──────────────
+        power = torch.fft.fft2(rp, norm="ortho").abs() ** 2
+        ac = torch.fft.ifft2(power, norm="ortho").real
+        ac = torch.fft.fftshift(ac, dim=(-2, -1))
+        mid, L = ps // 2, self.max_lag
+        ac = ac[..., mid - L:mid + L + 1, mid - L:mid + L + 1]
+        ac = ac / ac.amax(dim=(-2, -1), keepdim=True).clamp_min(1e-8)
+        ac = ac.flatten(2)
+        centre = (2 * L + 1) ** 2 // 2
+        ac = torch.cat([ac[..., :centre], ac[..., centre + 1:]], dim=-1)
+
+        # ── 3. residual moments + the high-frequency deficit statistic ────
+        allres = res.unfold(2, ps, ps).unfold(3, ps, ps).reshape(B, 3, g * g, ps * ps)
+        sd = allres.std(-1)
+        mabs = allres.abs().mean(-1)
+        kurt = (((allres - allres.mean(-1, keepdim=True)) ** 4).mean(-1)
+                / (sd ** 4 + 1e-8)).clamp(0, 100)
+        moments = torch.cat([sd, mabs, kurt], dim=1).transpose(1, 2)   # (B,P,9)
+
+        # energy above vs below half-Nyquist: "synthetic images are too smooth"
+        n = spec.shape[-1]
+        q = n // 4
+        hi = spec[..., :q, :].mean((-2, -1)) + spec[..., -q:, :].mean((-2, -1))
+        lo = spec[..., q:-q, :].mean((-2, -1))
+        ratio = torch.stack([hi, hi - lo], dim=-1)                     # (B,P,2)
+
+        return torch.cat([cells, ac, moments, ratio], dim=-1)          # (B,P,C)
+
+
 def build_extractor(name: str, device: str = "cuda", **kwargs) -> PatchExtractor:
     ex: PatchExtractor
     if name == "clip":
@@ -220,6 +316,8 @@ def build_extractor(name: str, device: str = "cuda", **kwargs) -> PatchExtractor
         ex = SbiEncoderExtractor(**kwargs)
     elif name == "srm":
         ex = SrmPatchExtractor(**kwargs)
+    elif name == "spectral":
+        ex = SpectralResidualExtractor(**kwargs)
     else:
         raise KeyError(f"unknown extractor {name!r}")
     return ex.to(device).eval()

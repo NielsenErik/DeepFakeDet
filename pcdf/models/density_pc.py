@@ -140,6 +140,7 @@ class PCDetector:
                                weight_decay=cfg.weight_decay)
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=cfg.epochs)
         best, best_state, bad = float("inf"), None, 0
+        batch = cfg.batch_size
         n = len(Xtr)
         g = torch.Generator().manual_seed(cfg.seed)
 
@@ -147,15 +148,29 @@ class PCDetector:
             self.pc.train()
             perm = torch.randperm(n, generator=g)
             tot, seen, t0 = 0.0, 0, time.time()
-            for i in range(0, n, cfg.batch_size):
-                xb = Xtr[perm[i:i + cfg.batch_size]].to(dev, non_blocking=True)
-                opt.zero_grad(set_to_none=True)
-                nll = -self.pc.log_prob(xb).mean()
-                nll.backward()
+            i = 0
+            while i < n:
+                xb = Xtr[perm[i:i + batch]].to(dev, non_blocking=True)
+                try:
+                    opt.zero_grad(set_to_none=True)
+                    nll = -self.pc.log_prob(xb).mean()
+                    nll.backward()
+                except torch.OutOfMemoryError:
+                    # Back off rather than lose the run: circuit memory scales
+                    # linearly in the batch, so halving always makes progress.
+                    opt.zero_grad(set_to_none=True)
+                    del xb
+                    torch.cuda.empty_cache()
+                    if batch <= 8:
+                        raise
+                    batch = max(8, batch // 2)
+                    print(f"[pc] CUDA OOM -> batch size {batch}", flush=True)
+                    continue
                 torch.nn.utils.clip_grad_norm_(self.pc.parameters(), cfg.grad_clip)
                 opt.step()
                 tot += float(nll) * len(xb)
                 seen += len(xb)
+                i += batch
             sched.step()
             train_nll = tot / max(seen, 1)
 
@@ -163,7 +178,7 @@ class PCDetector:
             if Xval is not None:
                 self.pc.eval()
                 with torch.no_grad():
-                    val_nll = float(-self.pc.log_prob(Xval, chunk=cfg.batch_size).mean())
+                    val_nll = float(-self.pc.log_prob(Xval, chunk=batch).mean())
             self.history.append({"epoch": ep, "train_nll": train_nll,
                                  "val_nll": val_nll, "sec": time.time() - t0})
             if verbose and (ep % 5 == 0 or ep == cfg.epochs - 1):

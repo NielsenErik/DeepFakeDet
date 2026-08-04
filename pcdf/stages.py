@@ -22,9 +22,29 @@ def _feat_dir(cfg: Dict) -> Path:
     return Path(cfg["root"]) / "features" / cfg["features"]["backbone"]
 
 
+def _feature_dims(cfg: Dict) -> Tuple[int, int]:
+    """
+    (grid, channels) of the projected features.
+
+    The channel count must come from the fitted projector, not the config:
+    `features.out_dim: 0` means "no PCA, keep every coordinate", so the true value
+    is only known after fitting.  Reading it from disk keeps every stage
+    consistent with the features that actually exist.
+    """
+    grid = int(cfg["features"]["grid"])
+    conf = int(cfg["features"]["out_dim"])
+    proj = _feat_dir(cfg) / "projector.npz"
+    if conf <= 0 and proj.exists():
+        import numpy as _np
+
+        return grid, int(_np.load(proj)["out_dim"])
+    return grid, conf
+
+
 def _tag(cfg: Dict) -> str:
     f, p = cfg["features"], cfg["pc"]
-    return (f"{f['backbone']}_g{f['grid']}c{f['out_dim']}_"
+    _, c = _feature_dims(cfg)
+    return (f"{f['backbone']}_g{f['grid']}c{c}_"
             f"{p['patch_method']}-{p['channel_method']}_K{p['n_sum_components']}")
 
 
@@ -92,18 +112,41 @@ def cmd_features(cfg: Dict, args) -> None:
         print(f"[features] applying perturbation {args.perturb!r} to every crop "
               f"(models stay frozen; only the input distribution moves)")
 
+    pseudo = bool(getattr(args, "pseudo", False))
+    families = getattr(args, "pseudo_families", False)
+    if pseudo:
+        from .data.sbi import blend_ratio, multi_family_blend, self_blend
+
+        print("[features] SELF-BLENDING every crop: these become the training "
+              "set of p_blend for the likelihood-ratio detector. No real "
+              "forgery is involved — the blends are made from these same reals.")
+
     def iter_crops(records, batch: int):
         """Yield (images uint8 batch, meta rows)."""
         import cv2
 
+        rng = np.random.default_rng(cfg["seed"])
         buf, meta = [], []
         for r in records:
             d = root / "crops" / r.dataset / r.method / Path(r.video).stem
+            lmk_path = d / "landmarks.npy"
+            lmks = np.load(lmk_path) if (pseudo and lmk_path.exists()) else None
             for jpg in sorted(d.glob("[0-9]*.jpg")):
                 img = cv2.imread(str(jpg))
                 if img is None:
                     continue
                 rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                if pseudo:
+                    j = int(jpg.stem)
+                    if lmks is None or j >= len(lmks):
+                        continue
+                    if families:
+                        blended, mask, _fam = multi_family_blend(rgb, lmks[j], rng)
+                    else:
+                        blended, mask = self_blend(rgb, lmks[j], rng)
+                    if not (0.02 < blend_ratio(mask) < 0.9):
+                        continue          # degenerate blend teaches nothing
+                    rgb = blended
                 buf.append(perturb(rgb) if perturb is not None else rgb)
                 meta.append({"video": Path(r.video).stem, "method": r.method,
                              "label": r.label, "split": r.split,
@@ -166,8 +209,12 @@ def cmd_features(cfg: Dict, args) -> None:
         by_split.setdefault(r.split, []).append(r)
 
     suffix = "" if getattr(args, "perturb", "clean") in (None, "clean") else f"_{args.perturb}"
+    if pseudo:
+        suffix += "_blend"
     for split, split_recs in by_split.items():
-        if suffix and split != "test":
+        if suffix.endswith("_blend") and split not in ("train", "val"):
+            continue          # p_blend is fitted on train, monitored on val
+        if suffix and not suffix.endswith("_blend") and split != "test":
             continue          # robustness is a TEST-time question only
         out_npy = out_dir / f"{dataset}_{split}{suffix}.npy"
         if out_npy.exists() and not args.overwrite:
@@ -203,7 +250,7 @@ def cmd_fit_pc(cfg: Dict, args) -> None:
     from .models.density_pc import PCConfig, PCDetector
 
     root = Path(cfg["root"])
-    grid, c = cfg["features"]["grid"], cfg["features"]["out_dim"]
+    grid, c = _feature_dims(cfg)
     Ztr, _ = _load_split(cfg, "train", label=0)
     Zval, _ = _load_split(cfg, "val", label=0)
     n_val = min(len(Zval), 4000)
@@ -225,6 +272,63 @@ def cmd_fit_pc(cfg: Dict, args) -> None:
     (root / "models" / f"pc_{_tag(cfg)}_audit.json").write_text(
         json.dumps(audit, indent=2, default=float))
     print(f"[fit-pc] saved {out}")
+
+
+# ── stage: combine feature sets ─────────────────────────────────────────────
+
+def cmd_combine_features(cfg: Dict, args) -> None:
+    """
+    Concatenate two already-extracted feature sets along the CHANNEL axis.
+
+    The arms measured so far fail and succeed for different reasons: the
+    SBI-shaped encoder captures blending geometry (it was trained on blends),
+    while the spectral-residual features capture generator noise traces and are
+    far more uniform across manipulation types.  Neither subsumes the other, and
+    concatenating them costs no new extraction — the circuit simply gets a wider
+    per-patch vector, and its region graph can still learn which coordinates
+    belong together.
+
+    Patch grids must match; channels are standardized within each source first
+    so one source cannot dominate purely by scale.
+    """
+    root = Path(cfg["root"])
+    out_name = args.out or "+".join(args.sources)
+    out_dir = root / "features" / out_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for split in ("train", "val", "test"):
+        parts, index = [], None
+        for src in args.sources:
+            d = root / "features" / src
+            f = d / f"{args.dataset}_{split}.npy"
+            if not f.exists():
+                print(f"[combine] missing {f}, skipping split {split}")
+                parts = []
+                break
+            Z = np.load(f, mmap_mode="r")
+            Z = np.asarray(Z, dtype=np.float32)
+            mu, sd = Z.mean((0, 1), keepdims=True), Z.std((0, 1), keepdims=True) + 1e-6
+            parts.append((Z - mu) / sd)
+            if index is None:
+                index = json.loads((d / f"{args.dataset}_{split}_index.json").read_text())
+        if not parts:
+            continue
+        assert len({p.shape[1] for p in parts}) == 1, "patch grids differ"
+        Zc = np.concatenate(parts, axis=2).astype(np.float16)
+        np.save(out_dir / f"{args.dataset}_{split}.npy", Zc)
+        (out_dir / f"{args.dataset}_{split}_index.json").write_text(json.dumps(index))
+        print(f"[combine] {split}: {Zc.shape} -> {out_dir}")
+
+    # a projector stub so _feature_dims and the stages agree on the width
+    from .features.projector import PatchProjector
+
+    C = int(np.load(out_dir / f"{args.dataset}_test.npy", mmap_mode="r").shape[2])
+    P = int(np.load(out_dir / f"{args.dataset}_test.npy", mmap_mode="r").shape[1])
+    PatchProjector(mean=np.zeros(C, np.float32),
+                   components=np.eye(C, dtype=np.float32),
+                   scale=np.ones(C, np.float32), explained=1.0,
+                   n_patches=P, out_dim=C, whiten=False).save(out_dir / "projector.npz")
+    print(f"[combine] wrote projector stub (C={C})")
 
 
 # ── stage: train the SBI encoder / baseline ─────────────────────────────────
@@ -266,7 +370,7 @@ def cmd_ablate_structure(cfg: Dict, args) -> None:
     from .models.density_pc import PCConfig, PCDetector
 
     root = Path(cfg["root"])
-    grid, c = cfg["features"]["grid"], cfg["features"]["out_dim"]
+    grid, c = _feature_dims(cfg)
     Ztr, _ = _load_split(cfg, "train", label=0)
     Zval, _ = _load_split(cfg, "val", label=0)
     Zval = Zval[:4000]
@@ -312,6 +416,74 @@ def cmd_ablate_structure(cfg: Dict, args) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(out, indent=2, default=float))
     print(f"[ablate] wrote {p}")
+
+
+# ── stage: likelihood-ratio detector ────────────────────────────────────────
+
+def cmd_fit_ratio(cfg: Dict, args) -> None:
+    """
+    Fit p_real and p_blend over one shared region graph and score by their
+    exact log-ratio.  This is the answer to the measured failure of raw
+    likelihood (dilution + inversion, see `pcdf/eval/diagnose.py`): the ratio
+    cancels the background statistics that both classes share.
+    """
+    from sklearn.metrics import roc_auc_score
+
+    from .eval.metrics import video_keys, video_level
+    from .models.density_pc import PCConfig
+    from .models.ratio import PCRatioDetector
+
+    root = Path(cfg["root"])
+    grid, c = _feature_dims(cfg)
+    Ztr, _ = _load_split(cfg, "train", label=0)
+    Zval, _ = _load_split(cfg, "val", label=0)
+    Zbl, _ = _load_split(cfg, "train", label=0, perturb="blend")
+    Zval_bl, _ = _load_split(cfg, "val", label=0, perturb="blend")
+    n = min(len(Ztr), len(Zbl))
+    print(f"[ratio] {n} real / {len(Zbl)} self-blended training crops, d={grid*grid*c}")
+
+    pcc = PCConfig(device=cfg["device"], seed=cfg["seed"], **cfg["pc"])
+    det = PCRatioDetector(grid, grid, c, pcc)
+    det.fit(Ztr.reshape(len(Ztr), -1), Zbl.reshape(len(Zbl), -1),
+            Zval[:3000].reshape(-1, grid * grid * c),
+            Zval_bl[:3000].reshape(-1, grid * grid * c),
+            structure_cache=root / "models" / f"structure_{_tag(cfg)}.pkl")
+    # persist before scoring: the fit is the expensive part and scoring is the
+    # memory-hungry part, so a failure there must not cost the circuits
+    det.save(root / "models" / f"ratio_{_tag(cfg)}.pt")
+    # 1500 real frames is ample for per-patch mean/sd, and the ratio's
+    # per-patch pass expands to (frames x 64 masks x 2 circuits)
+    det.calibrate(Zval[:1500].reshape(-1, grid * grid * c))
+
+    Zte, ite = _load_split(cfg, "test")
+    if args.limit_test and len(Zte) > args.limit_test:
+        sel = np.sort(np.random.default_rng(0).choice(len(Zte), args.limit_test, False))
+        Zte, ite = Zte[sel], {k: v[sel] for k, v in ite.items()}
+    s = det.score(Zte.reshape(len(Zte), -1))
+    y, vkey = ite["label"].astype(int), video_keys(ite)
+
+    out = {"tag": _tag(cfg), "n_test": int(len(Zte)), "scores": {}}
+    for name, val in s.items():
+        if name.startswith("_"):
+            continue
+        vs, vy = video_level(val, vkey, y)
+        out["scores"][name] = {"auc_video": float(roc_auc_score(vy, vs)),
+                               "auc_frame": float(roc_auc_score(y, val))}
+    best = max(out["scores"], key=lambda k: out["scores"][k]["auc_video"])
+    out["best"] = {"score": best, **out["scores"][best]}
+    # per-method breakdown of the winner
+    per_method = {}
+    for meth in sorted(set(ite["method"][y == 1].tolist())):
+        m = (y == 0) | (ite["method"] == meth)
+        vs, vy = video_level(s[best][m], vkey[m], y[m])
+        per_method[meth] = float(roc_auc_score(vy, vs))
+    out["per_method"] = per_method
+
+    det.save(root / "models" / f"ratio_{_tag(cfg)}.pt")
+    p = root / "results" / _tag(cfg) / "ratio.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(out, indent=2, default=float))
+    print(json.dumps(out, indent=2, default=float))
 
 
 # ── stage: baselines ────────────────────────────────────────────────────────
@@ -434,6 +606,12 @@ def register_stages(sub) -> None:
     f.add_argument("--dataset", default="ffpp")
     f.add_argument("--methods", nargs="*", default=None)
     f.add_argument("--overwrite", action="store_true")
+    f.add_argument("--pseudo", action="store_true",
+                   help="self-blend every crop -> training data for p_blend")
+    f.add_argument("--pseudo-families", action="store_true",
+                   help="draw from ALL pseudo-forgery families (blend / render / "
+                        "overshoot / statistical) so p_blend covers both the "
+                        "rougher-than-real and smoother-than-real directions")
     f.add_argument("--limit-videos", type=int, default=None,
                    help="cap videos per (split, method) — for quick subset runs")
     f.add_argument("--perturb", default="clean",
@@ -443,6 +621,12 @@ def register_stages(sub) -> None:
 
     p = sub.add_parser("fit-pc", help="train the circuit on real faces only")
     p.set_defaults(fn=cmd_fit_pc)
+
+    cf = sub.add_parser("combine-features", help="concatenate feature sets channel-wise")
+    cf.add_argument("--sources", nargs="+", required=True)
+    cf.add_argument("--out", default=None)
+    cf.add_argument("--dataset", default="ffpp")
+    cf.set_defaults(fn=cmd_combine_features)
 
     t = sub.add_parser("train-sbi", help="train the SBI encoder/baseline on real frames")
     t.add_argument("--epochs", type=int, default=30)
@@ -457,6 +641,20 @@ def register_stages(sub) -> None:
     a.add_argument("--epochs", type=int, default=None)
     a.add_argument("--limit-test", type=int, default=20000)
     a.set_defaults(fn=cmd_ablate_structure)
+
+    dg = sub.add_parser("diagnose", help="why does the probe beat the density model?")
+    dg.add_argument("--n-eval", type=int, default=8000)
+    dg.set_defaults(fn=lambda cfg, args: __import__(
+        "pcdf.eval.diagnose", fromlist=["cmd_diagnose"]).cmd_diagnose(cfg, args))
+
+    pr = sub.add_parser("probe", help="supervised linear probe: is the signal in the features at all?")
+    pr.add_argument("--max-train", type=int, default=40000)
+    pr.set_defaults(fn=lambda cfg, args: __import__(
+        "pcdf.eval.probe", fromlist=["cmd_probe"]).cmd_probe(cfg, args))
+
+    fr = sub.add_parser("fit-ratio", help="two circuits scored by exact log-ratio")
+    fr.add_argument("--limit-test", type=int, default=None)
+    fr.set_defaults(fn=cmd_fit_ratio)
 
     b = sub.add_parser("baselines", help="fit the one-class baselines")
     b.add_argument("--only", nargs="*", default=None)

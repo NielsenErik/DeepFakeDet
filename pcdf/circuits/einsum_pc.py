@@ -130,6 +130,7 @@ class EinsumPC(nn.Module):
         pairing: str = "auto",
         weight_jitter: float = 0.5,
         seed: int = 0,
+        checkpoint_leaves: Optional[bool] = None,
     ):
         super().__init__()
         self.region_graph = region_graph
@@ -138,6 +139,11 @@ class EinsumPC(nn.Module):
         self.M = int(leaf_components)
         self.pairing = pairing
         self.n_features = len(region_graph.scope)
+        # auto-enable leaf checkpointing once the leaf layer is big enough to
+        # dominate memory (~100k leaf units); explicit values always win
+        self.checkpoint_leaves = (checkpoint_leaves if checkpoint_leaves is not None
+                                  else self.n_features * int(n_input_components
+                                                             or n_sum_components) > 100_000)
         self.is_structured = is_structured_decomposable_rg(region_graph)
 
         regions = region_nodes(region_graph)
@@ -321,6 +327,23 @@ class EinsumPC(nn.Module):
         return V[:, self.root_col]
 
     def _leaf_vals(self, x, observed=None, boxes=None) -> torch.Tensor:
+        """
+        Leaf log-values, optionally recomputed in the backward pass.
+
+        The leaf layer is the memory hog at scale: it materialises (B, L, M)
+        intermediates, and L = d · I units.  At d = 6080 with I = 8, M = 4 and
+        B = 256 that is ~50M elements per intermediate, several of which
+        autograd keeps alive — enough to exhaust a 16 GB card before the first
+        sum layer runs.  Checkpointing trades one extra leaf evaluation for
+        dropping all of those from the graph, which is the right trade here
+        because the leaf layer is cheap (three fused ops) relative to the
+        einsum levels above it.
+        """
+        if self.checkpoint_leaves and self.training and torch.is_grad_enabled():
+            from torch.utils.checkpoint import checkpoint
+
+            return checkpoint(lambda t: self.leaves(t, observed=observed, boxes=boxes),
+                              x, use_reentrant=False)
         return self.leaves(x, observed=observed, boxes=boxes)
 
     def _run(self, x: torch.Tensor, observed=None, boxes=None,

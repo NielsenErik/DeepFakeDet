@@ -1,310 +1,669 @@
-# POC — Deepfake Detection with Probabilistic Circuits
+# Deepfake detection with probabilistic circuits — the complete story
 
-**One-line summary:** the PCNET recipe (arXiv:2605.05953 — a probabilistic circuit as a
-tractable density estimator over LLM residual streams, NLL as hallucination score)
-transfers to deepfake detection: train the PC on embeddings of **real faces only**,
-score any face by its **exact negative log-likelihood**. Fakes are geometric
-anomalies — they land in low-density regions of the real-face distribution.
-
-**Result:** AUROC **0.81** on self-blended face swaps and **0.96** on resampling
-artifacts, matching Mahalanobis and approaching a full-covariance GMM, with every
-circuit property (smoothness, decomposability, structured decomposability, Z = 1,
-exact marginals) validated at run time.
+*Last updated 2026-08-04. This is the full record: what we tried, what happened,
+why, and what it means. Written to be readable without prior context.
+`STATUS.md` is the short operational version; `README.md` is the code tour.*
 
 ---
 
-## 1. Why this should work (and where it can fail)
+## Table of contents
 
-PCNET's core claim is domain-agnostic:
-
-> Anomalies of a generative process live in low-density regions of a well-chosen
-> representation space. A tractable density estimator over that space detects them
-> with an exact, cheap, single-pass score.
-
-| | Hallucination (PCNET) | Deepfake (this POC) |
-|---|---|---|
-| Generative process | LLM decoding | camera → (maybe) manipulation |
-| Representation | residual stream `h_t` | image embedding `f(x)` |
-| "Normal" data | factual generations | real faces |
-| Anomaly | hallucinated token states | manipulated faces |
-| Score | exact `−log p(h_t)` | exact `−log p(f(x))` |
-
-The one thing that does **not** transfer automatically is the representation.
-The residual stream already encodes "factuality geometry"; a vision embedding must
-be *chosen* so that manipulation artifacts survive in it. That choice — not the
-circuit — decided every result in this POC (see §6, Lesson 1).
+1. [The one-paragraph summary](#1-the-one-paragraph-summary)
+2. [The original idea, in plain words](#2-the-original-idea-in-plain-words)
+3. [What a probabilistic circuit is](#3-what-a-probabilistic-circuit-is)
+4. [What we built](#4-what-we-built)
+5. [The data](#5-the-data)
+6. [The four representations we tried](#6-the-four-representations-we-tried)
+7. [The results, and the moment it went wrong](#7-the-results-and-the-moment-it-went-wrong)
+8. [Diagnosis: whose fault is it?](#8-diagnosis-whose-fault-is-it)
+9. [The fix: stop asking "is this weird", ask "which process made it"](#9-the-fix)
+10. [The fairness check that changed the conclusion](#10-the-fairness-check)
+11. [What is definitely true about the implementation](#11-what-is-definitely-true)
+12. [Where circuits still have an uncontested claim](#12-uncontested-claim)
+13. [How to run everything](#13-how-to-run-everything)
+14. [Open problems, ranked](#14-open-problems-ranked)
+15. [Appendix: the historical LFW proof of concept](#15-appendix-historical-poc)
 
 ---
 
-## 2. Probabilistic-circuit background in 5 minutes
+## 1. The one-paragraph summary
 
-A PC is a computation graph over three node types, evaluated bottom-up in log-space:
+We asked whether a probabilistic circuit trained **only on real faces** can spot
+deepfakes by giving them low probability. On real data (FaceForensics++) the
+answer is **no — but not for the reason it looks like**. Fake faces are not
+weird; they are *more ordinary* than real ones. Once we stopped scoring "how
+unusual is this face" and started scoring "which process better explains this
+face", every density model jumped from ~0.2–0.6 to ~0.83 AUC. That fix works,
+it is important, and it is **not specific to circuits** — a plain Gaussian
+mixture does equally well. The circuit's own advantages (exactness, speed,
+structure learning) are real and measured, but they do not, so far, buy better
+detection.
 
-- **Leaf** — a normalized univariate density over one feature (Gaussian, mixture of
-  Gaussians, categorical, …).
-- **Product** (`×`) — multiplies children defined over **disjoint** feature sets
-  (log-space: sum).
-- **Sum** (`+`) — weighted mixture of children over the **same** feature set,
-  weights softmax-normalized (log-space: logsumexp).
+---
 
-### The properties this project must never break
+## 2. The original idea, in plain words
 
-| Property | Statement | What it buys |
-|---|---|---|
-| **Smoothness** | every sum's children share one scope | marginalizing a variable stays exact |
-| **Decomposability** | every product's children have disjoint scopes | marginals factorize; single-pass exact `log p(x)` |
-| **Structured decomposability** | all products split scopes the way one shared **vtree** prescribes | products of two circuits, advanced queries (SOS mode) |
-| **Normalization Z = 1** | leaves normalized + softmax sum weights (consequence, not extra work) | NLL is a calibrated density, not just a score |
-
-Smoothness + decomposability ⇒ `log p(x)`, any marginal `p(x_S)`, and the partition
-function are all **exact and linear-time in circuit size**. This is the entire
-advantage over VAEs/flows/energy models used by prior one-class deepfake work: their
-scores are approximate (ELBO) or expensive; ours is exact and comes with exact
-marginals for free — which enables *localization* ("which features are anomalous"),
-the strongest future differentiator (§7).
-
-### A worked micro-example (2 features)
-
-Density over `x = (x₁, x₂)` — a mixture of two "styles" of correlated behavior:
+Take a big pile of **real** face photos. Learn a probability distribution over
+them: a function `p(face)` that says how likely each face is.
 
 ```
-                 (+)  w = [0.6, 0.4]           vtree:    ( {1,2} )
-                /    \                                    /      \
-             (×)      (×)                              {1}       {2}
-            /   \    /   \
-     N(x₁;0,1) N(x₂;0,1)  N(x₁;3,1) N(x₂;3,1)
+   many real faces  ──►  learn p(·)  ──►  a "map" of what real faces look like
+```
+
+Now show it a new face and compute `p(face)`.
+
+```
+   real face   ─►  p = high   ─►  "I've seen things like this"       ✅ real
+   fake face   ─►  p = low    ─►  "this is in a weird empty region"  🚩 fake
+```
+
+The score is the **negative log-likelihood**, `NLL = −log p(face)`: high NLL
+means surprising means suspicious. This is the recipe that worked for detecting
+LLM hallucinations (PCNET, arXiv:2605.05953) — hallucinated states sat in
+low-density regions of the model's internal space.
+
+The whole project is the question: **does that transfer to faces?**
+
+The hidden assumption, which turns out to be the crux:
+
+> ⚠️ *Fakes live in low-probability regions.*
+
+Hold on to that sentence. Section 8 shows it is false for deepfakes.
+
+---
+
+## 3. What a probabilistic circuit is
+
+A circuit is a calculator for probabilities, built from three kinds of node.
+
+```
+   LEAF      one number in, one probability out.
+             "how likely is THIS single measurement?"
+             e.g. a bell curve over feature #17
+
+   PRODUCT   ×   multiply children that describe DIFFERENT things
+                 (assumes they're independent given the branch)
+
+   SUM       +   weighted average of children that describe the SAME things
+                 (a mixture: "either this pattern, or that one")
+```
+
+### A tiny worked example
+
+Two features `x₁, x₂`. Two "styles" of face — say, bright ones and dark ones:
+
+```
+                    ( + )   weights 0.6 / 0.4
+                   /     \
+                ( × )     ( × )
+                /   \     /   \
+          N(x₁;0,1) N(x₂;0,1)  N(x₁;3,1) N(x₂;3,1)
+             "both dark"          "both bright"
 ```
 
 `p(x) = 0.6·N(x₁;0,1)·N(x₂;0,1) + 0.4·N(x₁;3,1)·N(x₂;3,1)`
 
-- **Exact evaluation** at `x=(0,0)` (N(0;0,1)=0.399, N(3;0,1)=0.0044):
-  `p = 0.6·0.399·0.399 + 0.4·0.0044·0.0044 ≈ 0.0955` → `−log p ≈ 2.35`.
-  At `x=(0,3)` (a point *neither* component likes — "mismatched style", the anomaly):
-  `p = 0.6·0.399·0.0044 + 0.4·0.0044·0.399 ≈ 0.0018` → `−log p ≈ 6.34`. Higher NLL ⇒ anomaly,
-  even though **each coordinate on its own is perfectly normal**. That is what a
-  product-of-marginals model can never see, and why circuit structure matters.
-- **Exact marginal** `p(x₁)`: replace every `x₂` leaf by its integral (= 1):
-  `p(x₁) = 0.6·N(x₁;0,1) + 0.4·N(x₁;3,1)`. One pass, no integration.
-- Both children of the sum have scope `{1,2}` (smooth ✓); every product splits
-  `{1,2}` into `{1}|{2}` as the vtree says (decomposable + structured ✓).
+Evaluate it:
 
-With the library this is:
+| point | meaning | p | NLL |
+|---|---|---|---|
+| (0, 0) | dark + dark ✔ consistent | 0.0955 | **2.35** |
+| (3, 3) | bright + bright ✔ consistent | 0.0637 | 2.75 |
+| (0, 3) | dark + bright ✘ **inconsistent** | 0.0018 | **6.34** |
 
-```python
-from allinone_probabilistic_circuits import (
-    DensityPC, GaussianLeaf, VtreeInternal, VtreeLeaf)
+Look at the last row. Each coordinate on its own is perfectly normal — `x₁=0`
+is a fine dark value, `x₂=3` is a fine bright value. Only the **combination**
+is strange. A model that looked at each feature separately would see nothing.
+This is why structure matters, and it is exactly the shape of a face swap:
+the swapped region is a normal face, the background is a normal background,
+but they don't belong together.
 
-vtree = VtreeInternal(VtreeLeaf(0), VtreeLeaf(1))
-pc = DensityPC(vtree, n_sum_components=2, leaf_factory=GaussianLeaf)
-pc.validate()                      # smooth + decomposable + structured ✓
-pc.log_prob(z)                     # exact log p(z)
-pc.log_marginal(z, [1])            # exact log p(z₁), x₂ integrated out
-pc.log_partition()                 # exactly 0  (log 1)
+### The four properties we never break
+
+| property | plain meaning | what it buys |
+|---|---|---|
+| **smooth** | every `+` mixes children about the same variables | you can integrate a variable out exactly |
+| **decomposable** | every `×` splits variables into disjoint groups | one pass gives the exact answer |
+| **structured decomposable** | all `×` split the same way, following one shared plan (a "vtree") | lets you multiply/square circuits |
+| **normalized (Z = 1)** | probabilities sum to exactly 1 | NLL is a real density, not a made-up score |
+
+Smooth + decomposable ⇒ you get, **exactly and in one pass**:
+
 ```
+   log p(x)            the full probability
+   log p(x_S)          any MARGINAL: "ignore everything except region S"
+   log p(x_S | x_rest) any CONDITIONAL: "how odd is S given its surroundings"
+   log P(a ≤ x ≤ b)    any BOX query
+```
+
+Nothing else in the one-class toolbox does this. A normalizing flow gives you
+`log p(x)` exactly but **no marginals**. A memory bank (PatchCore) gives
+distances but **no probabilities**. A VAE gives only a bound.
 
 ---
 
-## 3. Pipeline
+## 4. What we built
 
 ```mermaid
-flowchart LR
-    subgraph data [Data - LFW, identity-disjoint]
-        R[real faces train 1600] 
-        T[real faces test 1423]
-        T -->|self-blend SBI-style| F1[fake: face-swap proxy]
-        T -->|bicubic down-up| F2[fake: resampling proxy]
-    end
-    subgraph feat [Representation - fit on real train only]
-        E[forensic 34-d features<br/>DCT bands + noise residuals + color deltas]
-        W[full-dim PCA whitening + z-score]
-        E --> W
-    end
-    subgraph pc [Density - real train only]
-        V[Chow-Liu vtree from MI]
-        D["DensityPC (GMM leaves, K=2)<br/>trained by exact NLL"]
-        V --> D
-        A["property audit: smooth, decomposable,<br/>structured, log Z = 0, exact marginals"]
-        D --> A
-    end
-    R --> E
-    T --> E
-    F1 --> E
-    F2 --> E
-    W --> D
-    D -->|"score = −log p(z)"| S[AUROC real-test vs fakes]
+flowchart TD
+    A[FF++ videos<br/>6000 videos] -->|MediaPipe, 32 frames each| B[183,723 face crops<br/>256x256 + 478 landmarks]
+    B --> C{representation}
+    C -->|frozen| C1[CLIP ViT-L/14<br/>patch tokens]
+    C -->|frozen| C2[SRM forensic<br/>descriptor]
+    C -->|frozen| C3[spectral residual<br/>Corvi et al.]
+    C -->|trained on self-blends| C4[SBI EfficientNet-B4]
+    C1 & C2 & C3 & C4 --> D[project to a small<br/>vector per patch]
+    D --> E[region graph<br/>ORC / Chow-Liu / kd-tree]
+    E --> F[circuit trained on<br/>REAL faces only]
+    F --> G1[score: NLL]
+    F --> G2[score: per-patch conditional]
+    F --> G3[score: likelihood RATIO]
+    G1 & G2 & G3 --> H[AUC, localization,<br/>pre-registered rubric]
 ```
 
-Everything that *learns* (features scaler, whitening, vtree, circuit) sees **only
-real training faces**. Fakes are built **only from test identities**, so no fake
-and no test identity leaks into training in any form.
+The pieces, and where they live:
 
-### Pseudo-fakes (no deepfake dataset needed for a POC)
+| what | file | note |
+|---|---|---|
+| the circuit engine | `pcdf/circuits/einsum_pc.py` | our fast version |
+| the reference | `src/probabilistic_circuits.py` | your library — the *specification* |
+| structure learning | `pcdf/circuits/structure.py` | Chow-Liu, Ollivier-Ricci, Forman, spectral |
+| face extraction | `pcdf/data/faces.py` | crop-then-purge, derived masks |
+| self-blending | `pcdf/data/sbi.py` | manufacture fakes from reals |
+| representations | `pcdf/features/backbones.py` | the four arms |
+| the detector | `pcdf/models/density_pc.py` | NLL + per-patch scores |
+| the ratio detector | `pcdf/models/ratio.py` | two circuits |
+| competitors | `pcdf/models/baselines.py` | Mahalanobis, GMM, PatchCore, flow |
+| the diagnosis | `pcdf/eval/diagnose.py` | why did it fail |
+| the probe | `pcdf/eval/probe.py` | is the signal even there |
 
-1. **Self-blend** (proxy for face swaps, after Self-Blended Images, CVPR 2022):
-   take target face T and a *different identity* source S; color-match S to T
-   inside a soft elliptical face mask; push S through a down-up resample (the
-   warping/generator fingerprint); alpha-blend under the blurred mask. Reproduces
-   the two classic face-swap artifacts — blending boundary + donor/background
-   statistical mismatch.
+### Why we rewrote the engine
 
-   ```
-   target T ─────────────────────────────┐
-   source S → color-match → down-up ─→ M·S + (1−M)·T    M = blurred ellipse
-   ```
+Your reference library builds one Python object per unit and walks the graph
+recursively. That is fine for 34 features; it does not finish for 6,080.
 
-2. **Down-up** (proxy for generator upsampling): whole-image bicubic down-up
-   resample at factor 0.45–0.6. Easier; purely spectral.
+```
+   reference:   ~10⁵ Python objects, recursive walk, one node at a time
+   ours:        the same circuit as a stack of batched matrix ops (einsums)
 
-### Features (the load-bearing choice)
+   level 3   [ ][ ][ ][ ]        all regions of a level computed together
+   level 2   [    ][    ]
+   level 1   [        ]
+```
 
-34-d forensic descriptor, all artifact-sensitive, no semantics:
-
-- **16 radial log-DCT band energies** — resampling/generator fingerprints are
-  spectral (Frank et al., ICML 2020);
-- **9 noise-residual moments** (std/skew/kurtosis per RGB channel of a high-pass
-  residual) + **3 cross-channel residual correlations** — blending disturbs sensor
-  noise;
-- **6 inner-ellipse vs outer-ring color deltas** — self-blending breaks
-  face/background color consistency.
-
-Then **full-dimension PCA whitening** (fit on real train): a fixed invertible
-linear map that absorbs linear correlations so circuit capacity goes to
-non-Gaussian structure. The PC still models a valid normalized density — in
-rotated coordinates — so all properties are untouched.
+Same model, same numbers, different execution. Measured: **44.5× faster**
+(0.0034 s vs 0.152 s per training step), and `tests/test_equivalence.py` copies
+parameters between the two implementations and checks that `log p(x)`, exact
+marginals, box queries and `log Z` agree to 2e-4 across six structure families.
 
 ---
 
-## 4. Results
+## 5. The data
 
-AUROC, real-test vs fakes (higher is better). All density models trained on the
-same real-only features.
+**FaceForensics++ c23** — the standard benchmark. 1,000 real videos, and five
+ways of faking each one:
+
+```
+   real/000.mp4  ──┬─► Deepfakes/000_003.mp4       (neural face swap)
+                   ├─► FaceShifter/000_003.mp4     (neural face swap)
+                   ├─► NeuralTextures/000_003.mp4  (neural, mouth region only)
+                   ├─► Face2Face/000_003.mp4       (GRAPHICS: 3D model + render)
+                   └─► FaceSwap/000_003.mp4        (GRAPHICS: 3D model + render)
+```
+
+That neural/graphics split becomes important in section 9.
+
+**Splits.** The official identity-disjoint 720/140/140 split. Fake videos
+inherit the split of their *target* identity, so no person appears in two
+splits in any form.
+
+**What we extracted:** 32 evenly spaced frames per video → face detected with
+MediaPipe → square crop with 1.3× margin → 256×256.
+
+```
+   6,000 videos → 5,874 gave usable crops → 183,723 crops (4.5 GB)
+                  (126 videos: no face found in any sampled frame)
+
+   train 132,809   val 25,484   test 25,430
+   of which REAL training frames: 22,115   ← the only thing the circuit sees
+```
+
+**Localization ground truth.** This distribution ships no mask videos, so we
+derive them: a fake video and its real source are frame-aligned, so
+
+```
+   mask = |fake_frame − real_frame|  →  blur  →  threshold
+```
+
+Sanity: on Deepfakes this marks ~16% of the crop as manipulated — the right
+order for a face swap. Every output labels these `derived_frame_diff`, never
+"official masks".
+
+---
+
+## 6. The four representations we tried
+
+The circuit needs *numbers* per face. Which numbers is the whole ballgame.
+
+```
+   crop 256×256  →  8×8 grid of patches  →  a small vector per patch
+                    (64 patches)             (16 or 95 numbers)
+                                             ↓
+                                    d = 64 × 16 = 1024 features
+                                    (or 64 × 95 = 6080)
+```
+
+| arm | what it measures | learned? |
+|---|---|---|
+| **SRM** | high-pass noise moments, radial spectrum, colour stats | no |
+| **CLIP** | semantic content, from a frozen ViT-L/14 | no (pre-trained) |
+| **spectral** | 2D residual spectrum (peaks kept!), autocorrelation, high-frequency deficit — after Corvi et al. CVPRW 2023 | no |
+| **SBI** | features of an EfficientNet-B4 trained on real frames + self-blends | yes, no real fakes |
+
+**Important detail** that cost us a whole arm: the SRM descriptor *radially
+averages* the spectrum. Generator fingerprints are **discrete peaks** at
+particular frequencies, and radial averaging smears them into nothing. The
+`spectral` arm keeps the 2D layout for exactly this reason.
+
+```
+   radial average (SRM)        2D grid (spectral)
+   ┌───────────────┐           ┌───┬───┬───┬───┐
+   │   ((( )))     │  peaks →  │   │ ● │   │   │  peak position preserved
+   │  averaged away│  lost     ├───┼───┼───┼───┤
+   └───────────────┘           │   │   │   │ ● │
+                               └───┴───┴───┴───┘
+```
+
+---
+
+## 7. The results, and the moment it went wrong
+
+Detection, video-level AUC (0.5 = coin flip, 1.0 = perfect). Everything fitted
+on real faces only; identical protocol, identical baselines.
+
+| arm | circuit (NLL) | Mahalanobis | GMM | PatchCore | flow |
+|---|---|---|---|---|---|
+| SRM | 0.624 | 0.628 | 0.531 | 0.627 | — |
+| **CLIP** | **0.536** | 0.519 | 0.531 | 0.517 | 0.536 |
+| spectral | 0.554 | 0.568 | 0.592 | 0.556 | 0.557 |
+| SBI | 0.812 | 0.386 | 0.788 | 0.461 | 0.804 |
+
+Three arms near coin-flip. And a very suspicious pattern: **every model gets
+almost the same number**. When a circuit, a Gaussian, a memory bank and a flow
+all agree to within 0.02, the model is not the variable.
+
+Worse, the winning score in almost every case was `patch_lowmax` — the branch
+that flags patches as suspicious for being **unusually ORDINARY**.
+
+That is the assumption from section 2 failing:
+
+```
+   what we assumed:              what we measured:
+
+   real ████████                 real ████████
+        ░░░░fake                      ██fake██        ← fakes sit INSIDE,
+   ────────────────►             ────────────────►      even more central
+     p(face) high → low            p(face) high → low
+```
+
+---
+
+## 8. Diagnosis: whose fault is it?
+
+Instead of arguing, we measured. Three suspects, three tests
+(`pcdf/eval/diagnose.py`, run on the fitted spectral circuit, d = 6,080).
+
+### First: is there any signal at all?
+
+Train a plain **linear classifier** on the *same* numbers the circuit sees
+(trained on the validation split, never on test). This is an upper bound on
+what anything could extract from these coordinates.
+
+| arm | linear probe | circuit (NLL) | **gap** |
+|---|---|---|---|
+| CLIP | 0.775 | 0.536 | **0.239** |
+| spectral | 0.802 | 0.554 | 0.248 |
+| SBI | 0.859 | 0.812 | **0.047** |
+
+So the signal **is there** — a straight line separates the classes at 0.78–0.86.
+The density model recovers almost none of it. The features are not the problem.
+
+### Suspect 1 — DILUTION ✅ confirmed
+
+`log p(z)` is a **sum over all 6,080 numbers**. Most of them describe identity,
+pose and lighting — things both classes share. Two different real faces differ
+hugely in those; a face and its forgery barely differ at all.
+
+```
+   log p(z) = Σ over 6080 coordinates
+              └── ~6000 nuisance ──┘ + └── ~50 that matter ──┘
+                  huge, irrelevant        small, relevant
+                       ↑
+                  drowns everything
+```
+
+Test: use the circuit's **exact marginals** to score only the most
+discriminative coordinates. AUC 0.461 → 0.554, a **+0.093 jump** from ignoring
+most of the data. Confirmed.
+
+### Suspect 2 — INVERSION ✅ confirmed
+
+Fraction of forgeries with *higher* likelihood than the median real face:
+**55.4%**. Generated and rendered skin is smoother, cleaner, more average than
+real camera output. A one-sided NLL is monotone in "typicality", so it cannot
+possibly flag things for being too typical.
+
+### Suspect 3 — BAD DENSITY ❌ ruled out
+
+Circuit held-out NLL vs a full-covariance Gaussian on the same data: the
+Gaussian is **singular** (infinite NLL — 6,080 dimensions, 20k samples), the
+circuit fits fine. The density estimate is good.
+
+**Verdict: the model was fine, the question was wrong.**
+
+---
+
+## 9. The fix
+
+### Why NLL was the wrong question
+
+The one-class score is secretly already a likelihood ratio — against the
+*worst possible* model of forgeries:
+
+```
+   −log p_real(z)  =  log [ uniform(z) / p_real(z) ] + constant
+                             ↑
+                    "a fake could be literally anything"
+```
+
+That is the right thing to assume when you know nothing about fakes. But we
+*can* know something: **self-blends** (SBI, section 15b) manufacture realistic
+pseudo-forgeries from real faces alone. So replace the uniform guess with a
+learned one:
+
+```
+        ┌── p_real  ── trained on real training faces ──┐
+   z ──►┤                                                ├──► s(z) = log p_blend − log p_real
+        └── p_blend ── trained on SELF-BLENDS of those ──┘        "which process explains z?"
+                       same real faces (no real fake!)
+```
+
+Two changes, both decisive:
+
+1. **Nuisance cancels.** If a coordinate behaves the same under both models,
+   its contribution to the *difference* is ≈ 0. Only coordinates where the two
+   processes genuinely differ survive. Dilution solved.
+2. **Direction stops mattering.** We never ask "is this typical", only "which
+   model explains it better". Inversion solved.
+
+This is Neyman–Pearson: for choosing between two hypotheses, the likelihood
+ratio is the optimal statistic.
+
+### Does the construction work? Yes — dramatically
+
+Sanity check on the shift it was trained to see (real vs our own self-blends,
+held-out):
+
+| statistic | AUC |
+|---|---|
+| p_real alone | 0.585 |
+| p_blend alone | 0.643 |
+| **the ratio** | **0.953** |
+
+Two mediocre densities → one strong detector. The machinery is sound.
+
+### On real forgeries: it depends entirely on the representation
+
+| arm | one-class NLL | **ratio** |
+|---|---|---|
+| spectral | 0.554 | 0.549 ✗ |
+| **SBI** | 0.812 | **0.828** ✓ |
+
+Why the spectral arm failed, from its per-method breakdown:
+
+| method | type | ratio AUC |
+|---|---|---|
+| Deepfakes | neural | 0.675 ✓ |
+| FaceShifter | neural | 0.666 ✓ |
+| NeuralTextures | neural | 0.592 ✓ |
+| Face2Face | **graphics** | 0.450 ✗ inverted |
+| FaceSwap | **graphics** | 0.362 ✗ inverted |
+
+```
+                        smoother ◄──── REAL ────► rougher
+   graphics forgeries:  ●●●●
+   our self-blends:                            ●●●●
+                        └── opposite directions! ──┘
+```
+
+Our self-blends add noise (resampling, JPEG); 3D-rendered faces *remove* it.
+`p_blend` learned the wrong kind of deviation, so half the forgeries score
+backwards. (We tested whether compression history explained it — re-encoding
+blends to match the crops' JPEG pipeline: no change, 0.549.)
+
+On **SBI features** the gap disappears, because that encoder was trained end to
+end to make self-blends and real forgeries look alike. Every method above
+chance: Deepfakes 0.920, Face2Face 0.870, FaceShifter 0.842, NeuralTextures
+0.808, FaceSwap 0.702.
+
+---
+
+## 10. The fairness check
+
+The ratio needs an exact likelihood — but so do flows, and Gaussians have one
+too. So: give **every** baseline the same two-density treatment.
+
+```
+   FAIRNESS CHECK (SBI features, FF++ test)
+   model          one-class      with ratio
+   ─────────────────────────────────────────
+   flow             0.200    →     0.828
+   GMM              0.225    →     0.830   ← best
+   Mahalanobis      0.286    →     0.814
+   circuit          0.812    →     0.828
+```
+
+**The ratio is the whole gain; the circuit is not.** A Gaussian mixture with
+the same construction matches — marginally beats — the circuit. The
+pre-registered gate "circuit beats the best non-circuit baseline by ≥0.02"
+**fails** under a fair comparison.
+
+Also worth knowing: the circuit's *per-patch conditional* ratio (0.822–0.826)
+did **not** beat its own joint ratio (0.828), so conditioning on context bought
+nothing measurable here either.
+
+The honest headline is therefore:
+
+> **Likelihood-ratio scoring against a self-blend density rescues one-class
+> deepfake detection** — turning 0.20–0.29 (worse than chance) into 0.81–0.83 —
+> **and it works for any exact-likelihood model.**
+
+That is a real, useful, transferable result. It is not a result about circuits.
+
+---
+
+## 11. What is definitely true
+
+Independent of the detection disappointment, these are measured and would
+survive review:
+
+**The implementation is correct.** Parameters copied both ways between our
+engine and your reference library; `log p(x)`, exact marginals over random
+masks, box queries and `log Z` agree to 2e-4 — across Chow-Liu, ORC,
+multi-partition ORC, Forman, spectral and random structures. 14/14 tests pass.
+
+**It is fast and it scales.**
+
+```
+   d = 1024,  K = 8    622k parameters, 2047 regions,  1.2 s/epoch  (GPU)
+                                                      11.7 s/epoch  (CPU)
+   d = 6080,  K = 8    trains fine with leaf checkpointing
+   speedup vs reference object-graph circuit:  44.5×
+   log Z after training:  −1.1e-06     (normalization survives optimization)
+```
+
+**Structure learning works, and curvature beats Chow-Liu clearly.** Same
+features, same budget, only the region graph changes (held-out NLL, lower is
+better):
+
+```
+   random      1255.7  ├──────────────────────────────────┤
+   Chow-Liu    1250.5  ├─────────────────────────────────┤   −5 nats
+   ORC         1209.7  ├────────────────────────────┤        −46 nats
+   Forman      1086.3  ├──────────────────┤                  −169 nats
+```
+
+Reproduced on three different representations. **But** detection AUC stayed
+~0.52 for all of them — a much better density is not a better detector. That
+disconnect is itself a finding.
+
+**The collapse bug is genuinely fixed.** `tests/test_structure_matters.py`:
+K=8 beats a product of marginals by **7.2 nats**, learned structure beats
+random by **4.7 nats**, on data built to have exploitable structure.
+
+---
+
+## 12. Uncontested claim
+
+One thing the competitors genuinely cannot do, and it has not yet been tested
+with the ratio scores:
+
+```
+   per-patch GMM / PatchCore:  each patch scored ALONE, no joint model
+                               → cannot ask "given the REST of the face..."
+
+   flow over the whole image:  joint, exact log p(x)
+                               → but NO marginals, cannot integrate anything out
+
+   circuit:                    joint AND exact marginals at any scope
+                               → log p(z_S | z_rest) for arbitrary regions S
+```
+
+So the circuit is the only model that can answer *"is this region inconsistent
+with its surroundings"* exactly — which is the literal definition of a blending
+artifact. Current localization numbers (with plain NLL, not the ratio) are:
+
+| model | patch AUC | pointing accuracy |
+|---|---|---|
+| PatchCore | **0.670** | **0.438** |
+| PC conditional | 0.568 | 0.218 |
+| GMM | 0.540 | 0.206 |
+| flow | 0.510 | 0.142 |
+
+PatchCore currently wins. The untested combination — **per-patch likelihood
+ratio** as a localization map — is the one remaining experiment that could give
+circuits an uncontested win, because it inherits the ratio's cancellation
+*and* the circuit's exact conditioning.
+
+---
+
+## 13. How to run everything
+
+```bash
+ssh jawa17@192.168.1.8
+cd ~/Documents/Unitn/PhD/Main-Project/GitHub/DeepFakeDet
+PY=~/miniconda3/envs/expllm_env/bin/python
+```
+
+```bash
+# one-off: videos → crops (~40 min)
+$PY -m pcdf.cli manifest --datasets ffpp
+$PY -m pcdf.cli ingest --dataset ffpp --masks
+
+# one arm, end to end  (swap the config for a different representation)
+CFG="-c configs/ffpp_sbi.yaml"          # or ffpp_clip / ffpp_spectral
+$PY -m pcdf.cli $CFG features --dataset ffpp     # crops → numbers
+$PY -m pcdf.cli $CFG probe                       # is the signal there at all?
+$PY -m pcdf.cli $CFG fit-pc                      # circuit, real faces only
+$PY -m pcdf.cli $CFG baselines                   # the competitors
+$PY -m pcdf.cli $CFG evaluate --datasets ffpp
+$PY -m pcdf.cli $CFG explain --n-images 2000     # localization
+$PY -m pcdf.cli $CFG diagnose                    # why did it fail?
+$PY -m pcdf.cli $CFG report                      # → results/<tag>/REPORT.md
+
+# the likelihood-ratio detector
+$PY -m pcdf.cli $CFG features --dataset ffpp --pseudo   # self-blend everything
+$PY -m pcdf.cli $CFG fit-ratio --limit-test 8000
+
+# structure comparison, and the expressiveness check
+$PY -m pcdf.cli $CFG ablate-structure --epochs 25
+$PY scripts/sos_experiment.py --config configs/ffpp_spectral.yaml --top-k 128
+```
+
+Test it all on a laptop in one minute, no data needed:
+
+```bash
+python scripts/smoke_pipeline.py    # synthetic data, every stage, asserts it works
+python -m pytest tests/ -q          # 14 tests: equivalence, structure, devices
+```
+
+⚠️ **A partial `features` run must be deleted, never resumed** — the projector
+is written first and reused, so an interrupted run silently poisons everything
+downstream.
+
+---
+
+## 14. Open problems, ranked
+
+**1. Per-patch ratio for localization** (~15 min). The only untested place
+where circuits have a capability nothing else has. Decides whether the
+"exact explanation" framing survives.
+
+**2. Make the pseudo-fakes cover both directions** (~1 h). Our blends are
+*rougher* than real; graphics forgeries are *smoother*. Add a render-like
+smoothing mode to `pcdf/data/sbi.py`. A circuit is a mixture model, so
+`p_blend` can hold both families natively.
+
+**3. Train the SBI encoder properly** (~5 h). Ours: 40 epochs, 16 frames/video,
+val 0.865. Published: ~0.99. Everything downstream inherits that shortfall —
+it is the single biggest lever on absolute numbers, though it will not change
+circuit-vs-GMM.
+
+**4. Cross-dataset** (blocked). Celeb-DF-v2 needs the official form; without it
+the generalization gate cannot be measured. DF40 mirrors exist but are
+fake-only, which forces a caveated real/fake source mismatch.
+
+**5. Test Corvi's mechanism on its home ground.** Their analysis is about
+*fully synthetic* images with no sensor-noise floor. FF++ re-renders a real
+face into a real video and re-encodes at c23, so both classes carry camera
+noise. GenImage / diffusion subsets stored losslessly would be the fair test.
+
+---
+
+## 15. Appendix: historical LFW proof of concept
+
+*(The original 2026-07-16 experiment, kept for the record — its lessons still
+hold and two of them shaped everything above.)*
+
+Setup: LFW faces, identity-disjoint split, pseudo-fakes made by self-blending
+and by down-up resampling. 34-dimensional forensic descriptor, `DensityPC`
+with Gaussian-mixture leaves.
 
 | setup | self-blend | down-up |
 |---|---|---|
-| ResNet18 avg-pool + PCA24 — *every model* | ~0.55 | ~0.53 |
-| forensic 34-d, raw: PC(chow-liu) | 0.684 | 0.958 |
-| forensic 34-d, raw: PC(random vtree) | 0.585 | 0.966 |
-| forensic 34-d, raw: Mahalanobis / GMM-full(4) | 0.735 / 0.836 | 0.962 / 0.981 |
-| forensic whitened: **PC(chow-liu)** | **0.807** | **0.959** |
-| forensic whitened: Mahalanobis / GMM-full(4) | 0.807 / 0.842 | 0.960 / 0.986 |
+| ResNet18 pooled — *every model* | ~0.55 | ~0.53 |
+| forensic 34-d, raw: PC (Chow-Liu) | 0.684 | 0.958 |
+| forensic 34-d, raw: Mahalanobis / GMM | 0.735 / 0.836 | 0.962 / 0.981 |
+| forensic whitened: **PC (Chow-Liu)** | **0.807** | 0.959 |
+| forensic whitened: Mahalanobis / GMM | 0.807 / 0.842 | 0.960 / 0.986 |
 
-Property audit passed after **every** training run:
-`smooth ✓ decomposable ✓ structured-decomposable ✓ log Z = 0 ✓ exact marginals ✓`.
-
-Train-NLL evidence that structure matters (raw features, after the symmetry fix):
-Chow-Liu vtree **13.98** vs random vtree **27.51** — 13.5 nats from structure alone.
-
----
-
-## 5. How to run
-
-```bash
-# env: conda cvad_venv (torch 2.8, torchvision, cv2, sklearn)
-PY=~/miniconda3/envs/cvad_venv/bin/python
-
-# main configuration (forensic features + whitening)
-POC_FEATURES=forensic POC_WHITEN=1 $PY -u src/poc_deepfake_pc.py
-
-# ablations
-POC_FEATURES=forensic $PY -u src/poc_deepfake_pc.py   # no whitening
-POC_FEATURES=resnet   $PY -u src/poc_deepfake_pc.py   # semantic features (fails)
-```
-
-First run downloads LFW (~230 MB) and caches features; reruns skip both.
-Each PC trains in ~2–4 min (CPU, scalar-parameter implementation).
-
----
-
-## 6. The three lessons (read before extending)
-
-**Lesson 1 — the embedding decides everything.** Globally-pooled ImageNet
-ResNet-18 features put *every* model at chance (~0.55): global average pooling and
-semantic training wash out the low-level artifacts deepfakes leave. Artifact
-signal lives in spectra, noise residuals, and local inconsistencies. Any follow-up
-must use artifact-preserving representations: forensic features, CLIP-ViT
-**patch** tokens (UnivFD showed the CLIP space keeps generator traces), or
-high-pass/DCT input streams.
+**Lesson 1 — the embedding decides everything.** Pooled ImageNet features put
+*every* model at chance. Confirmed again at full scale in section 7.
 
 **Lesson 2 — the silent product-of-marginals collapse.** `fit_leaves(jitter=…)`
-in `allinone_probabilistic_circuits.py` only jitters leaves exposing scalar
-`mu`/`log_sigma`. `GaussianMixtureLeaf` has `mus`/`log_sigmas` (plural) → **no
-jitter** → the K sibling subtrees under every sum start exactly identical →
-gradient symmetry keeps them identical forever → the mixture collapses to a
-product of marginals. Diagnostic signature: Chow-Liu and random vtrees produce
-*byte-identical* NLL curves. The POC works around it with `SymBrokenGMLeaf`
-(noise on `mus`/`logits` inside the leaf's own `fit()`); the real fix belongs in
-the library. **Always run the random-vtree control: if it matches the learned
-vtree exactly, the mixture is dead.**
+only jittered scalar-μ leaves, so the K sibling subtrees of every mixture
+started identical, got identical gradients, and stayed identical forever — the
+circuit quietly degenerated into an independence model, with nothing in the
+loss to reveal it. *Diagnostic:* a learned and a random structure give
+identical NLL. Now guarded by `tests/test_structure_matters.py`.
 
-**Lesson 3 — don't make the tree pay for linear correlations.** A tree PC with
-small K spends its capacity modeling covariance that a full-covariance Gaussian
-gets for free (raw: PC 0.684 vs Mahalanobis 0.735). Full-dim whitening as a fixed
-preprocessing bijection removes that tax (whitened: PC = Mahalanobis = 0.807);
-capacity then goes to non-Gaussian structure, which is the only place a PC can
-*beat* Mahalanobis. Note the flip side: after whitening the vtree stops mattering
-(random ≈ chow-liu) because linear dependence is gone — structure learning only
-pays on correlated coordinates.
+**Lesson 3 — don't make the tree pay for linear correlations.** Full-dimension
+whitening as fixed preprocessing lets the circuit spend capacity on
+non-Gaussian structure instead of covariance.
 
----
-
-## 6b. Real-deepfake validation (added later on 2026-07-16) — honest negative
-
-`POC_DATA=openforensics` adds real deepfakes: the HF mirror
-`Hemg/deepfake-and-real-images` (OpenForensics-derived 256×256 face crops;
-fakes are GAN-synthesized faces blended **in-context** into real scenes).
-3,000 reals train the PC; 1,500 held-out reals vs 1,500 fakes evaluate.
-
-| features (global) | one-sided NLL | two-sided \|NLL − median\| |
-|---|---|---|
-| forensic 34-d + whiten: PC / Mahal / GMM | 0.463 / 0.452 / 0.465 | 0.456 / 0.453 / 0.444 |
-| ResNet18 + PCA24: PC / Mahal / GMM | 0.422 / 0.409 / 0.424 | — |
-| CLIP ViT-L/14 + PCA24w: PC / Mahal / GMM | 0.450 / 0.419 / 0.459 | 0.452 / 0.525 / 0.492 |
-
-**Every global feature space × every density model is at (or slightly below)
-chance.** The consistent below-0.5 means fakes sit *closer to the mode* of the
-real-face density (smooth GAN faces; the classic likelihood-OOD pathology), and
-the two-sided typicality test shows the effect is too weak to exploit. This is
-**not** a PC failure — Mahalanobis and GMM-full fail identically — it is a
-representation failure with a clear mechanism: in-context swaps share scene,
-camera, and compression statistics with the reals *by construction*, so global
-statistics are matched; the discriminative signal (supervised CNNs reach >95%
-on this data, so it exists) is **local** — the blend boundary and the swapped
-interior — and global pooling/PCA destroys it. Two caveats: this Kaggle-derived
-mirror recompresses both classes identically (further erasing low-level cues),
-and pooled CLIP here differs from UnivFD's *supervised* probing on it.
-
-Consequence for the research plan: the PCNET transfer must go **local** —
-per-patch densities over artifact-amplifying representations (CLIP-ViT patch
-tokens, SRM/NPR residuals, DIRE-style reconstruction errors), aggregated by
-max/consistency scores — and be validated on FaceForensics++ c23 (form-gated,
-manual download) rather than recompressed Kaggle mirrors.
-
-## 7. Where the paper is (novelty positioning)
-
-Literature check (July 2026): **no published work combines PCs/SPNs with deepfake
-detection.** Closest neighbors:
-
-- one-class deepfake detectors trained on real faces only — SeeABLE (ICCV 2023),
-  OC-FakeDect (CVPRW 2020), DiffFake (2025): validate the framing, but all use
-  approximate scores (contrastive regressors, ELBOs);
-- UnivFD (CVPR 2023): frozen CLIP-ViT features generalize across generators —
-  validates the frozen-embedding substrate;
-- PC scaling (LVD ICLR 2023, PyJuice, Monarch-HCLTs): the tooling for growing
-  this beyond 34 dimensions.
-
-The unique, defensible contribution is what only a smooth + decomposable circuit
-can do: **exact localization by marginals** — score `p(z_S)` over patch/feature
-subsets to answer *which region/statistic is fake* with exact probabilities
-(the Khosravi et al. outlier-explanation query, already anticipated in
-`src/bak/cvxpc_probabilistic_circuits.py`), mirroring PCNET's "intervene only
-where the geometry deviates."
-
-## File map
-
-| file | role |
-|---|---|
-| `src/poc_deepfake_pc.py` | this POC (data, pseudo-fakes, features, PC training, audit, eval) |
-| `src/bak/allinone_probabilistic_circuits.py` | the PC library: DensityPC, SquaredPC, 5 vtree learners, validators, exact inference |
-| `src/bak/cvxpc_probabilistic_circuits.py` | older image-oriented variant (per-pixel scoring idea worth resurrecting) |
-| `src/bak/llm_probabilistic_circuits.py` | original PCNET residual-stream circuit (paper code) |
-| `hands_off.md` | handoff notes: status, gotchas, next steps |
+**The honest negative that started the rebuild.** On real GAN face swaps
+(OpenForensics), *every* global feature space × *every* density model landed at
+or slightly below chance — forensic 0.463, ResNet 0.422, pooled CLIP 0.450 —
+consistently **below** 0.5, meaning fakes sat closer to the mode. At the time
+we read this as "go local". Section 8 shows the deeper reading: it was the
+first sighting of the inversion, three weeks before we understood it.

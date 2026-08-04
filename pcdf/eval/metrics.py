@@ -110,7 +110,9 @@ def _score_all_models(cfg: Dict, tag: str, Z: np.ndarray) -> Dict[str, Dict[str,
     from ..models.density_pc import PCConfig, PCDetector
 
     root = Path(cfg["root"])
-    grid, c = cfg["features"]["grid"], cfg["features"]["out_dim"]
+    from ..stages import _feature_dims
+
+    grid, c = _feature_dims(cfg)
     out: Dict[str, Dict[str, np.ndarray]] = {}
 
     pc_path = root / "models" / f"pc_{tag}.pt"

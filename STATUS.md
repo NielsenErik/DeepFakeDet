@@ -1,5 +1,306 @@
 # Status — 2026-08-04
 
+## P0 RESULTS — the circuit finally wins something no one else can do
+
+### P0.1 Localization by per-patch RATIO — **WIN, +0.066 over PatchCore**
+
+Score = `log p_blend(z_p | z_−p) − log p_real(z_p | z_−p)`, exact, per patch.
+It inherits the ratio's nuisance cancellation AND the circuit's exact
+conditioning on context — a combination no competitor can form.
+
+| model | patch AUC | per-image | IoU | pointing |
+|---|---|---|---|---|
+| **PC ratio (conditional)** | **0.7366** | **0.7309** | **0.3178** | 0.3128 |
+| PatchCore | 0.6711 | 0.6721 | 0.2885 | **0.4392** |
+| GMM | 0.5424 | 0.5305 | 0.1843 | 0.2046 |
+| Mahalanobis | 0.5404 | 0.5145 | 0.1841 | 0.0814 |
+| flow | 0.5113 | 0.5066 | 0.1660 | 0.1422 |
+
+Clears the pre-registered 0.03 localization gate. Every manipulation above
+chance (Deepfakes 0.841, Face2Face 0.722, FaceShifter 0.722, FaceSwap 0.692,
+NeuralTextures 0.639). PatchCore keeps a sharper single peak (pointing 0.44);
+the circuit wins on region overlap, which is what a forensic user needs.
+
+### P0.2 Occlusion robustness — **no advantage** (honest negative)
+
+Exact marginalization 0.8297 → 0.8287 as 0-50% of patches are hidden; a GMM
+with mean imputation 0.8318 → 0.8301. Both flat: the image score averages over
+patches, so an imputed patch contributes a benign near-average value and the
+circuit's exactness never gets to matter. A max-aggregated score might separate
+them; as measured, this is not a selling point.
+
+### P0.3 Region-wise discriminative information — **works, and is unique**
+
+`D_R = E_real[log p_real(z_R) − log p_blend(z_R)]` per patch, both marginals
+exact (the region is a node of the shared graph), expectation on held-out
+reals. Top regions: patches 36, 37, 35 (row 4, cols 3-5), 28, 19, 20, 27 —
+**the centre of the face**, 115-159 nats. The model identified where swaps
+manipulate without ever being told where a face is. No baseline can produce a
+model-level explanation at all.
+
+## Hybrid discriminative training — flat, and the reason matters
+
+| λ | FF++ AUC | localization | real-vs-blend |
+|---|---|---|---|
+| 1.0 (generative) | 0.8274 | 0.7500 | 0.9996 |
+| 0.3 | 0.8274 | 0.7559 | 0.9996 |
+| 0.1 | 0.8269 | **0.7600** | 0.9996 |
+| 0.0 (discriminative) | 0.8214 | 0.7191 | 0.9992 |
+
+Detection does not move. The diagnostic is in the last column: at λ=0 the
+discriminative loss reaches **0.0000** and real-vs-blend AUC is **0.9996** —
+the pseudo-task is SATURATED. There is no gradient left because the model
+already separates our blends perfectly; what it cannot do is generalise to real
+forgeries.
+
+**Conclusion: the bottleneck is neither the model, the objective, nor the
+scoring rule — it is the pseudo-fake distribution.** Same conclusion as "The
+Alpha Blending Hypothesis" (2026), reached independently from our own numbers.
+Consequently the next levers are (a) the encoder, (b) the projection ceiling
+(probe caps at 0.859 because we keep 16 of 1792 dims and pool 12×12 to 8×8),
+and (c) pseudo-fake DIVERSITY — now implemented as four forgery families
+(`blend` / `render` / `overshoot` / `statistical`) covering both the
+rougher-than-real and smoother-than-real directions, which a circuit can hold
+natively as a mixture.
+
+
+## RESULT SUMMARY — the representation is everything
+
+Four representations, identical circuit, identical protocol (real faces only,
+official identity-disjoint FF++ splits), identical baselines:
+
+| arm | PC video AUC | supervised probe on the SAME features | gap |
+|---|---|---|---|
+| SRM (hand-built, radial spectrum) | 0.624 | — | — |
+| CLIP ViT-L/14 patch tokens | 0.536 | 0.775 | **0.239** |
+| **SBI-shaped encoder** | **0.812** | 0.859 | **0.047** |
+| spectral residual (Corvi et al.) | 0.554 | 0.802 | **0.248** |
+
+**The probe-minus-one-class gap is the headline.** It measures how much of the
+extractable signal density estimation actually recovers. Shaping the
+representation with self-blends closes it from 0.24 to 0.047: in an
+artifact-tuned space, one-class density detection recovers nearly everything
+supervision can get from the same coordinates. That is the transfer working —
+but only once the representation makes forgery *atypical*.
+
+SBI arm, all models in that feature space:
+
+| model | FF++ video AUC |
+|---|---|
+| SBI classifier (supervised, real-only protocol) | 0.860 |
+| **PC (patch_cond_lowmax)** | **0.812** |
+| RealNVP flow | 0.804 |
+| GMM-full | 0.788 |
+| PatchCore | 0.461 |
+| Mahalanobis | 0.386 |
+
+The circuit leads every one-class competitor, but by +0.009 over the flow —
+under the 0.02 gate. G1 fails at 0.812 < 0.90, so the rubric still says STOP;
+the encoder is however weak by construction (val AUC 0.865 where published SBI
+reaches ~0.99: 40 epochs, 16 frames/video, AdamW instead of SAM), so most of
+that shortfall is compute, not method.
+
+**Localization loses to PatchCore** — PC 0.568 pooled patch AUC / 0.218
+pointing vs PatchCore 0.670 / 0.438. The exact-marginal machinery does not
+currently buy better localization ACCURACY; its claim has to rest on exactness
+and probabilistic semantics, not on beating a memory bank.
+
+Note which score keeps winning in every arm: `patch_cond_lowmax`, the
+*two-sided* branch. Forgeries are consistently found in HIGH-density regions,
+even in the SBI space.
+
+### Why the spectral (Corvi et al.) arm did not rescue it
+
+Its features are good — probe 0.802, and unusually UNIFORM across manipulations
+(0.73-0.84 per method, versus CLIP's 0.59-0.92), which is the cross-generator
+robustness that paper argues for, obtained with no learning at all. But the
+one-class gap stays at 0.248, and there are two structural reasons it should:
+
+* Corvi et al. analyse **fully synthetic** images, where the entire frame comes
+  from a generator and therefore lacks a sensor-noise floor. An FF++ face swap
+  re-renders a REAL face into a REAL video: both classes carry camera noise, so
+  the "missing noise floor" signature largely does not apply.
+* FF++ c23 is H.264-compressed and our crops add JPEG q95 — the paper itself
+  warns that compression and resampling destroy these fingerprints. Testing the
+  hypothesis on its home ground needs fully synthetic images (GenImage / DF40
+  diffusion subsets) stored losslessly, not re-encoded video.
+
+So this is not evidence against the paper; it is evidence that FF++ c23 is the
+wrong dataset for its mechanism, and that the failure is once again the
+typicality assumption, not the features.
+
+## DIAGNOSIS: the score was wrong, not the circuit (2026-08-04, late)
+
+The "everything is at chance" result was challenged rather than accepted, and
+the challenge was right. `pcdf/eval/diagnose.py` runs the FITTED circuit through
+three competing explanations on the spectral arm (d = 6080):
+
+| hypothesis | test | outcome |
+|---|---|---|
+| H1 dilution | exact marginal restricted to the top-k discriminative coordinates (selected on VAL) | **CONFIRMED: +0.093 AUC** over the full joint (0.461 → 0.554) |
+| H2 inversion | fraction of forgeries above the real median likelihood | **CONFIRMED: 55.4%** — fakes are MORE likely |
+| H3 estimation | circuit val NLL vs full-covariance Gaussian | **RULED OUT** — the Gaussian is singular at d = 6080; the circuit fits fine |
+
+So the density is good and the features carry signal (probe 0.802); what fails
+is using `log p(z)` as the statistic. It sums surprisal over 6080 coordinates,
+so evidence carried by a few dozen is outvoted, and the residual direction
+points the wrong way anyway. This is the textbook failure of likelihood-based
+OOD detection (Ren et al., NeurIPS 2019): `p(x)` is dominated by background
+statistics that both classes share.
+
+### The fix: an exact likelihood RATIO of two circuits
+
+`pcdf/models/ratio.py` — two circuits over ONE shared region graph:
+
+    p_real    fitted on real training faces
+    p_blend   fitted on SELF-BLENDS of those same faces (SBI protocol,
+              no real forgery is ever seen)
+    score     s(z) = log p_blend(z) − log p_real(z)
+
+Both are exactly normalized, so this is a true log-likelihood ratio — a
+generative classifier, Bayes-optimal when both densities are right — and the
+per-patch version
+
+    s_p(z) = log p_blend(z_p | z_−p) − log p_real(z_p | z_−p)
+
+is exact as well: a localization map whose values mean "this region is k nats
+better explained by blending than by the camera". Neither a flow (no marginals)
+nor a memory bank (no probabilities) can produce that. This is the first
+construction in the project where the circuit's exactness is load-bearing for
+DETECTION rather than only for explanation.
+
+## THE RATIO RESULT, AND THE FAIRNESS CHECK THAT QUALIFIES IT
+
+The two-circuit ratio was validated, then tested, then challenged:
+
+1. **Construction verified.** On real vs the SELF-BLENDS it was trained on
+   (held-out val, spectral features), the exact log-ratio reaches **0.953**
+   from two densities that alone score 0.585 and 0.643. The machinery is
+   sound — a circuit does detect a clear distribution shift, decisively.
+2. **On FF++ spectral features it fails (0.554→0.549)** and the per-method
+   pattern says why: the neural manipulations are detected (Deepfakes 0.68,
+   FaceShifter 0.67, NeuralTextures 0.59) while the GRAPHICS-based ones are
+   INVERTED (Face2Face 0.45, FaceSwap 0.36). Rendered faces are *smoother*
+   than real; our self-blends are *rougher*. The pseudo-fakes deviate in the
+   opposite direction from half the real forgeries. Matching the compression
+   history (JPEG re-encode after blending) did not fix it.
+3. **On SBI features it works: 0.828**, every method above chance
+   (Deepfakes 0.920, Face2Face 0.870, FaceShifter 0.842, NeuralTextures 0.808,
+   FaceSwap 0.702) — because that encoder was trained end to end to make
+   self-blends and real forgeries look alike, so the domain gap is small.
+4. **But the gain is the RATIO, not the circuit.** Given the same two-density
+   construction:
+
+   | model | one-class | with ratio |
+   |---|---|---|
+   | RealNVP flow | 0.200 | 0.828 |
+   | **GMM-full** | 0.225 | **0.830** |
+   | Mahalanobis | 0.286 | 0.814 |
+   | **PC (circuit)** | 0.812 | **0.828** |
+
+   A GMM with the ratio matches — marginally beats — the circuit. G3
+   (circuit beats the best non-circuit baseline by ≥0.02) **FAILS** under the
+   fair comparison. The circuit's per-patch CONDITIONAL ratio (0.822-0.826)
+   also did not beat its own joint ratio (0.828), so conditioning on context
+   bought nothing here either.
+
+The honest summary: the project discovered a real and transferable result —
+**likelihood-ratio scoring against a self-blend density rescues every density
+model on this task, converting a 0.20-0.29 inverted score into 0.81-0.83** —
+and that result is model-agnostic. It is not evidence for probabilistic
+circuits specifically.
+
+## What this means for "is it worth pursuing"
+
+Three things are established and would survive review:
+
+1. **The exact-inference engineering works.** Equivalence-tested against the
+   reference library, 44.5× faster, scales to d = 7104 on one 16 GB card, log Z
+   exact to 1e-6 after training, all four circuit properties audited per run.
+2. **Structure learning works, and curvature beats Chow-Liu decisively** —
+   Forman −169 nats, ORC −46, Chow-Liu −5 versus random, reproduced on three
+   different representations. This is a result about probabilistic circuits
+   that does not depend on deepfakes at all.
+3. **Detection does not follow likelihood.** Across four representations, large
+   NLL improvements produced no AUC improvement, and the winning score was
+   always the "too typical" branch. Density-based one-class detection fails on
+   deepfakes unless the representation is discriminatively shaped, because a
+   forgery is not an outlier — it is an ordinary-looking face.
+
+The honest framing is therefore a **methodological/negative contribution with a
+precise diagnostic** (the probe-minus-one-class gap), plus a genuine systems
+contribution (tensorized exact circuits) and a structure-learning result — not
+a state-of-the-art detection paper. Whether that is worth pursuing is a
+judgement call about venue and appetite, and it is the user's to make; the
+evidence is now in `results/*/REPORT.md` with a pre-registered rubric attached.
+
+The one open lever on the detection axis is the SBI encoder: ours reached val
+0.865 against ~0.99 published, and the arm built on it is the only one that
+closed the gap. A properly trained encoder (100 epochs, 32 frames/video) is
+running to settle whether G1 is reachable at all.
+
+## THE CENTRAL FINDING (CLIP arm + probe)
+
+The CLIP patch-token arm ran end to end on the GPU. It is at chance — and the
+diagnostic that follows is the most important result so far, because it says
+*where* the failure is:
+
+| model | FF++ video AUC | winning score |
+|---|---|---|
+| **PC** | **0.536** | `patch_cond_lowmax` |
+| RealNVP flow | 0.536 | `patch_max` |
+| GMM-full | 0.531 | `patch_lowmax` |
+| Mahalanobis | 0.519 | `patch_lowmax` |
+| PatchCore | 0.517 | `patch_lowmax` |
+
+**A supervised linear probe on the SAME projected features reaches 0.775 video
+AUC** (Deepfakes 0.92, FaceSwap 0.87, FaceShifter 0.77, Face2Face 0.72,
+NeuralTextures 0.59) — `pcdf/eval/probe.py`, trained on the val split, never on
+test. So the signal is present in exactly the coordinates the circuit sees, and
+one-class density scoring recovers almost none of it: a 0.24 AUC gap.
+
+Note *which* score wins for nearly every model: `patch_lowmax`, the two-sided
+branch. Fakes sit in **higher**-density regions than reals. This is not a
+tuning problem and not a circuit problem — it falsifies, for this
+representation, the assumption the whole PCNET transfer rests on:
+
+> anomalies of a generative process live in LOW-density regions of a
+> well-chosen representation
+
+For deepfakes in a semantically organised space, a manipulated face is
+*more typical* than a real one — generated skin is smoother, more average, more
+"face-like" than camera output. Density is the wrong statistic there; the
+signal is discriminative, not typicality-based.
+
+### Structure learning, on the other hand, works
+
+Same features, same budget, only the region graph changes:
+
+| structure | val NLL | vs random | detection AUC |
+|---|---|---|---|
+| random/random | 1255.70 | — | 0.533 |
+| kd/chow_liu | 1250.47 | −5.2 | 0.532 |
+| chow_liu/orc | 1229.93 | −25.8 | 0.530 |
+| orc/orc | 1235.73 | −20.0 | 0.529 |
+| kd/orc | 1209.72 | −46.0 | 0.525 |
+| **kd/forman** | **1086.26** | **−169.4** | 0.519 |
+
+Curvature-guided structure beats Chow-Liu by a wide margin on held-out
+likelihood (Forman −169 nats, ORC −46, Chow-Liu only −5 vs random), so gate G4
+passes decisively. And detection does not follow the likelihood at all — which
+is the same finding from the other direction: a better density model of real
+faces is not a better deepfake detector.
+
+Gates for the CLIP arm: G1 FAIL (0.536), G3 FAIL both halves, **G4 PASS
+(169.4 nats)**, G5 PASS (37.7 s per fit). Verdict: STOP for this arm.
+
+### Engineering claim, measured
+
+`pcdf bench --with-reference`: the tensorized circuit is **44.5× faster** than
+the reference object-graph implementation (0.0034 vs 0.152 s/step), and on the
+GPU a full fit takes 1.2 s/epoch versus 11.7 s/epoch on CPU. Structure ablation
+variants dropped from 225 s to ~25 s each.
+
 ## First real FF++ result (SRM arm, CPU) — honest negative
 
 The hand-crafted forensic arm (`backbone=srm`, 8×8 patches × 16 whitened dims,

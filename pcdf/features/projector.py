@@ -99,6 +99,18 @@ class PatchProjector:
         the covariance is 1024×1024 regardless of how many crops stream past,
         so the projector is fitted in one pass with no feature cache at all.
         """
+        if out_dim is not None and out_dim <= 0:
+            # Identity projection: keep every coordinate, standardize later.
+            # PCA ranks directions by VARIANCE, and forensic artifacts are
+            # low-variance by nature (content dominates), so for hand-built
+            # artifact features the reduction itself can delete the signal —
+            # measured on CLIP: probe 0.775 vs one-class 0.536.
+            C = len(s1)
+            return PatchProjector(
+                mean=(s1 / n).astype(np.float32),
+                components=np.eye(C, dtype=np.float32),
+                scale=np.ones(C, dtype=np.float32),
+                explained=1.0, n_patches=n_patches, out_dim=C, whiten=False)
         mean = s1 / n
         cov = s2 / n - np.outer(mean, mean)
         cov = (cov + cov.T) / 2.0

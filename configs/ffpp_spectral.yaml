@@ -1,0 +1,65 @@
+# Spectral-residual arm — the corrective for the central negative result.
+#
+# The CLIP arm showed that in a semantic space fakes are MORE typical than
+# reals (a supervised probe reaches 0.775 while every one-class model sits at
+# 0.52-0.54, and the winning score is the "too typical" branch).  That breaks
+# the assumption the method rests on.
+#
+# Corvi et al., "Intriguing properties of synthetic images: from GANs to
+# diffusion models" (CVPRW 2023), identify the domain where the assumption
+# should hold instead: the NOISE RESIDUAL.  Real camera output carries a sensor
+# noise floor with aperiodic high-frequency content; synthetic content lacks it
+# and instead carries periodic upsampling traces.  There, a forgery is genuinely
+# out-of-distribution rather than over-typical.
+#
+# Three corrections over the `srm` arm, each straight from that paper:
+#   * the 2D spectrum is pooled on a GRID, never radially — generator
+#     fingerprints are discrete peaks and a radial profile averages them away;
+#   * residual autocorrelation at small lags, where periodic traces appear;
+#   * an explicit high-frequency-deficit statistic ("synthetic is too smooth").
+#
+# out_dim: 0 disables PCA. PCA ranks directions by variance and forensic
+# artifacts are low-variance by construction, so reducing here is how the signal
+# gets deleted. Every one of the 95 coordinates is kept and standardized per
+# patch position -> d = 64 x 95 = 6080.
+root: /home/jawa17/deepfake_data
+seed: 0
+device: auto
+
+data:
+  ffpp_root: raw/ffpp/FaceForensics++_C23
+  splits_dir: .
+  n_frames_train: 32
+  n_frames_test: 32
+  crop_size: 256
+  margin: 1.3
+  detector: mediapipe
+  workers: 8
+  include_dfd: false
+
+features:
+  backbone: spectral
+  batch: 64
+  grid: 8
+  out_dim: 0          # keep every coordinate; see above
+  whiten: false
+  max_projector_images: 20000
+
+pc:
+  n_sum_components: 8
+  n_input_components: 8
+  leaf_components: 4
+  patch_method: kd
+  channel_method: orc
+  max_arity: 4
+  epochs: 60
+  batch_size: 64        # d = 6080 -> the leaf layer alone is ~50M elements/batch
+  lr: 0.005
+  patience: 8
+  topq: 0.05
+
+baselines: [mahalanobis, gmm, patchcore, flow]
+
+eval:
+  test_datasets: [ffpp]
+  robustness: [clean, jpeg70, jpeg50, resize0.5, blur]
