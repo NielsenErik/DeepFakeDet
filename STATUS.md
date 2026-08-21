@@ -65,6 +65,40 @@ there (Spearman ρ = 1.0000 for every ε ≤ 0.03). At the largest ε the box
 swallows the support, mass → 1, d → 0 and AUC → 0.500. Normalization confirmed
 from both ends.
 
+### The control: mass only helps where there IS a dimension gap
+
+Run on all four fitted circuits. `rel. gap` is the largest relative separation
+between real and forged local dimension across the ε sweep; `gain` is the best
+mass-based score minus the density it is derived from.
+
+| arm | d | density | LID | density−mass | rel. gap | gain |
+|---|---|---|---|---|---|---|
+| clip | 1024 | 0.4757 | 0.4421 | 0.5243 | 1.4% | +0.0486 |
+| srm | 1024 | 0.4442 | 0.5850 | 0.5558 | 2.4% | +0.1408 |
+| spectral | 6080 | 0.4587 | 0.5882 | 0.5413 | 2.9% | +0.1296 |
+| **sbi** | 1024 | **0.2116** | **0.7258** | **0.7884** | **36.9%** | **+0.5768** |
+
+**The gain tracks the gap.** This is the control the method needs: mass is not a
+generic statistic that inflates AUC wherever it is applied. On CLIP features
+real and forged faces have essentially the same local dimension (499.3 vs 492.5)
+and mass buys nothing — 0.5243, chance. The improvement appears only where there
+is a thin sheet to find, and its size is ordered by how thin the sheet is.
+
+**And the gap is a property of the REPRESENTATION, not of the images.** The same
+forgeries, the same crops, four feature spaces: they collapse onto a
+low-dimensional sheet only in the space that was built to expose blending
+artifacts. This is Finding "the representation is everything" (Aug 4) arriving
+from a completely different direction — and it is a much sharper version of it,
+because "how much lower-dimensional are forgeries here" is a single number
+computed from real data alone, with no forgery labels.
+
+Note what it does *not* rescue: the spectral (Corvi) arm stays at 0.54. That is
+consistent with Corvi et al.'s own caveat — FF++ c23 is H.264-compressed and our
+crops add JPEG, and they state that under strong compression "the compression
+artifacts dominate the scene and hide completely the generation artifacts." No
+fingerprint survives, so there is no dimension gap to find either. The right
+test of that mechanism is still fully synthetic images stored losslessly.
+
 ### What it does not do, stated plainly
 
 **It does not beat the project's existing scores** — 0.7884 against 0.8125 for

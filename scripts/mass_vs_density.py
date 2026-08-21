@@ -131,6 +131,18 @@ def main() -> None:
     root, tag = Path(cfg["root"]), _tag(cfg)
     grid, C = _feature_dims(cfg)
 
+    # `configs/` carries arms whose features were never built (combined), and a
+    # bare FileNotFoundError from six frames down does not say which.
+    fd = _feat_dir(cfg)
+    missing = [f"ffpp_{sp}.npy" for sp in ("train", "test")
+               if not (fd / f"ffpp_{sp}.npy").exists()]
+    if missing:
+        raise SystemExit(
+            f"[mass] no features for backbone '{cfg['features']['backbone']}': "
+            f"{', '.join(missing)} not under {fd}\n"
+            f"       run `pcdf features -c {a.config}` first, or pick an arm "
+            f"that exists: {', '.join(sorted(q.name for q in fd.parent.iterdir() if q.is_dir()))}")
+
     Ztr, _ = _load_split(cfg, "train", label=0)
     Zte, idx = _load_split(cfg, "test")
     if a.limit:
