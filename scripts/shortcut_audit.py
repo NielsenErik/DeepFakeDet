@@ -128,7 +128,8 @@ def periphery_blocks(mask: np.ndarray, shape, dilate_px: int = 24) -> np.ndarray
 
 # ── data ────────────────────────────────────────────────────────────────────
 
-def collect(root: Path, split: str, label: int, max_videos: int, per_video: int):
+def collect(root: Path, split: str, label: int, max_videos: int, per_video: int,
+            crops_dirname: str = "crops"):
     """(crop path, landmarks) pairs from the ingested manifest."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from pcdf.data.manifest import read_manifest
@@ -139,7 +140,7 @@ def collect(root: Path, split: str, label: int, max_videos: int, per_video: int)
     rng.shuffle(recs)
     out = []
     for r in recs[:max_videos]:
-        d = root / "crops" / r.dataset / r.method / Path(r.video).stem
+        d = root / crops_dirname / r.dataset / r.method / Path(r.video).stem
         lmk_p = d / "landmarks.npy"
         if not lmk_p.exists():
             continue
@@ -204,7 +205,8 @@ BLEND_CONFIGS = {
 }
 
 
-def test_leakage(root: Path, n_videos: int, per_video: int) -> dict:
+def test_leakage(root: Path, n_videos: int, per_video: int,
+                 crops_dirname: str = "crops") -> dict:
     """
     How much of real-vs-self-blend is decidable from pixels the blend never
     touched, under each recipe?  Every recipe uses the SAME seed per image, so
@@ -213,7 +215,7 @@ def test_leakage(root: Path, n_videos: int, per_video: int) -> dict:
     """
     from pcdf.data.sbi import match_source_pipeline
 
-    items = collect(root, "train", 0, n_videos, per_video)
+    items = collect(root, "train", 0, n_videos, per_video, crops_dirname)
     print(f"[T1] {len(items)} real training crops, "
           f"{len(BLEND_CONFIGS)} recipes", flush=True)
     rng = np.random.default_rng(0)
@@ -257,10 +259,11 @@ def test_leakage(root: Path, n_videos: int, per_video: int) -> dict:
     return out
 
 
-def test_transfer(root: Path, n_videos: int, per_video: int) -> dict:
+def test_transfer(root: Path, n_videos: int, per_video: int,
+                  crops_dirname: str = "crops") -> dict:
     """Is the same compression cue present in REAL FF++ forgeries?"""
-    reals = collect(root, "test", 0, n_videos, per_video)
-    fakes = collect(root, "test", 1, n_videos * 2, per_video)
+    reals = collect(root, "test", 0, n_videos, per_video, crops_dirname)
+    fakes = collect(root, "test", 1, n_videos * 2, per_video, crops_dirname)
     print(f"[T3] {len(reals)} real / {len(fakes)} forged test crops", flush=True)
 
     def feats(items):
@@ -379,15 +382,21 @@ def main() -> None:
     ap.add_argument("--checkpoint", default=None)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--tests", nargs="*", default=["T1", "T2", "T3"])
+    # Which stored crop set the blends are generated FROM.  This is not
+    # cosmetic: `crops` is JPEG q95 4:2:0 while `crops_hires` is q100 4:4:4,
+    # and `match_source_pipeline` re-encodes the blend at q88-96 with cv2's
+    # default 4:2:0 either way -- so the asymmetry the audit measures is a
+    # function of the crop set, and the `hires` ablation variant inherits it.
+    ap.add_argument("--crops-dir", default="crops")
     a = ap.parse_args()
 
     root = Path(a.root)
     res = {}
     if "T1" in a.tests:
-        res["T1_leakage"] = test_leakage(root, a.videos, a.per_video)
+        res["T1_leakage"] = test_leakage(root, a.videos, a.per_video, a.crops_dir)
         print(json.dumps(res["T1_leakage"], indent=2), flush=True)
     if "T3" in a.tests:
-        res["T3_transfer"] = test_transfer(root, a.videos, a.per_video)
+        res["T3_transfer"] = test_transfer(root, a.videos, a.per_video, a.crops_dir)
         print(json.dumps(res["T3_transfer"], indent=2), flush=True)
     if "T2" in a.tests:
         ck = Path(a.checkpoint or (root / "models" / "sbi_effnetb4.pt"))
@@ -398,7 +407,10 @@ def main() -> None:
         else:
             print(f"[T2] no checkpoint at {ck}, skipping")
 
-    out = root / "results" / "shortcut_audit.json"
+    # A named crop set gets a named result file, so measuring the leak on
+    # `crops_hires` cannot overwrite the `crops` numbers Finding 1 cites.
+    suffix = "" if a.crops_dir == "crops" else f"_{a.crops_dir}"
+    out = root / "results" / f"shortcut_audit{suffix}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(res, indent=2, default=float))
     print(f"\n[audit] wrote {out}")
