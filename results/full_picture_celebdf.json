@@ -1,6 +1,6 @@
 {
   "dataset": "celebdf",
-  "tag": "sbi_g8c16_kd-orc_K8",
+  "tag": "official_sbi_g8c16_kd-orc_K8",
   "n_crops": 16059,
   "d": 1024,
   "eps": 1.0,
@@ -22,58 +22,58 @@
     },
     {
       "stage": "linear probe on projected features",
-      "auc_video": 0.6833824975417895,
+      "auc_video": 0.8588237254803927,
       "note": "supervised, fitted on FF++ train"
     },
     {
-      "stage": "circuit, one-class (nll)",
-      "auc_video": 0.5630551805743047,
+      "stage": "circuit, one-class (patch_cond_topq)",
+      "auc_video": 0.6823158842057897,
       "note": "one-class"
     },
     {
       "stage": "circuit, raw NLL",
-      "auc_video": 0.5630551805743047,
+      "auc_video": 0.63983467493292,
       "note": "one-class"
     },
     {
-      "stage": "circuit, exact log-ratio (ratio_patch_topq)",
-      "auc_video": 0.7090978784394113,
+      "stage": "circuit, exact log-ratio (ratio_joint)",
+      "auc_video": 0.8356748829225207,
       "note": "ratio"
     },
     {
       "stage": "circuit, probability mass (eps=1)",
-      "auc_video": 0.5915204239788011,
+      "auc_video": 0.6502341549589187,
       "note": "mass"
     },
     {
       "stage": "circuit, density - mass",
-      "auc_video": 0.44024465443394495,
+      "auc_video": 0.3908304584770761,
       "note": "mass"
     },
     {
       "stage": "circuit, local dimension",
-      "auc_video": 0.3883639151375765,
+      "auc_video": 0.39073046347682616,
       "note": "mass"
     }
   ],
   "nll_family": {
-    "nll": 0.5630551805743047,
-    "patch_cond_max": 0.41861240271319766,
-    "patch_cond_topq": 0.47625952035731545,
-    "patch_cond_absmax": 0.4435111577754446,
-    "patch_cond_abstopq": 0.447977601119944,
-    "patch_cond_lowmax": 0.45037748112594367,
-    "patch_marg_max": 0.4101128276919488,
-    "patch_marg_absmax": 0.4285285735713214,
-    "incoherence": 0.4999916670833125,
-    "typicality": 0.44179457693781976
+    "nll": 0.63983467493292,
+    "patch_cond_max": 0.6741496258520407,
+    "patch_cond_topq": 0.6823158842057897,
+    "patch_cond_absmax": 0.6744662766861655,
+    "patch_cond_abstopq": 0.6816825825375399,
+    "patch_cond_lowmax": 0.38291418762395213,
+    "patch_marg_max": 0.6706997983434162,
+    "patch_marg_absmax": 0.6701331600086662,
+    "incoherence": 0.6521173941302935,
+    "typicality": 0.6410346149359197
   },
   "ratio_family": {
-    "ratio_joint": 0.6873822975517891,
-    "ratio_patch_max": 0.6916654167291636,
-    "ratio_patch_topq": 0.7090978784394113,
-    "ratio_patch_mean": 0.6791827075312902
+    "ratio_joint": 0.8356748829225207,
+    "ratio_patch_max": 0.7892938686399013,
+    "ratio_patch_topq": 0.8131260103661483,
+    "ratio_patch_mean": 0.8352915687548956
   },
-  "lid_real": 253.68190007427253,
-  "lid_fake": 274.0970348178174
+  "lid_real": 858.0199584479341,
+  "lid_fake": 876.1189581171606
 }

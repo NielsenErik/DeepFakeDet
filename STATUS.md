@@ -1,3 +1,88 @@
+# Status — 2026-08-22 (c): the official-encoder rerun. Finding 9 is dead; the ratio survives.
+
+The whole stack rebuilt on Shiohara & Yamasaki's released weights
+(`configs/ffpp_official.yaml`, `OfficialSbiExtractor`): features for FF++
+train/val/test, the self-blend sets, Celeb-DF, then projector, circuit, ratio,
+and `full_picture.py` on both datasets. Only the backbone changed, so these rows
+are comparable line for line with the ones measured on our encoder.
+
+| stage | FF++ c23 | Celeb-DF-v2 | drop |
+|---|---|---|---|
+| published SBI (reported) | — | 0.9287 | — |
+| official encoder, end to end | 0.8657 | 0.8921 | +0.026 |
+| linear probe (supervised) | **0.9192** | **0.8588** | −0.060 |
+| circuit, one-class (best of family) | 0.6944 | 0.6823 | −0.012 |
+| **circuit, exact log-ratio** | 0.8411 | 0.8357 | **−0.005** |
+| circuit, density − mass | 0.3270 | 0.3908 | — |
+
+## Finding 16: the mass result was an artefact of OUR encoder — Finding 9 is dead
+
+The dimension gap that made Finding 9 work does not exist in the published
+encoder's feature space. It **inverts on both datasets**:
+
+| features | FF++ real/fake | CDF real/fake | forgeries are |
+|---|---|---|---|
+| ours | 640.6 / **390.0** | 253.7 / 274.1 | lower on FF++ only |
+| **official** | 838.5 / **884.4** | 858.0 / **876.1** | **higher on both** |
+
+`density − mass` is 0.3270 and 0.3908 — well below chance on both datasets. The
+one place forgeries were dramatically lower-dimensional was FF++ under our own
+reimplementation, and Finding 12 showed that reimplementation does not transfer.
+
+**So Finding 9 measured a defect of our encoder, not a property of forgeries.**
+Kamkari et al.'s mechanism is real in the OOD literature; it does not describe
+deepfakes in a representation that works. This is a clean negative and it should
+be reported as one — the `log_ball` machinery, the tests and the reparametrization
+argument all stand, but the empirical claim does not.
+
+Note the shape of the error: Finding 9 looked strongest (+0.577) on the weakest
+representation, and the cross-arm control in Finding 9 said the gain "tracks the
+gap". It did — the gap itself was the artefact.
+
+## Finding 17: the exact log-ratio is the only stage that transfers
+
+**0.8411 on FF++, 0.8357 on Celeb-DF — a drop of 0.005.** Every other stage
+moves an order of magnitude more:
+
+| stage | drop crossing datasets |
+|---|---|
+| **circuit, exact log-ratio** | **−0.0054** |
+| circuit, one-class | −0.0121 |
+| linear probe (supervised) | −0.0604 |
+
+That is the result worth building on. It is not that the ratio is the most
+accurate — the probe beats it on both datasets (0.9192 / 0.8588) — it is that
+the ratio is **nearly invariant** to the domain shift that costs supervision
+0.060, while never seeing a real forgery of any kind.
+
+### Correction to Finding 14
+
+Finding 14 claimed the circuit *beats* supervision cross-dataset. On our
+encoder's features it did (0.7091 vs 0.6834). **On the official encoder's
+features it does not** — the probe wins both (0.8588 vs 0.8357). The probe only
+collapsed cross-dataset because our encoder's features carried FF++-specific
+structure for it to overfit; on a representation that transfers, supervision
+holds up.
+
+What survives, and it is the honest version: **the ratio is the most stable
+stage, by an order of magnitude.** That is a weaker claim than Finding 14 made
+and it is the one the evidence supports.
+
+## Finding 18: the one-class family needs our encoder's defects to work
+
+The one-class NLL family scores **0.6944** on official features against
+**0.8125** on ours — our weaker encoder is *better* for one-class density
+scoring. Consistent with Finding 1: our features carry FF++-specific compression
+structure a density model can exploit in-dataset. On a clean representation that
+crutch is gone, and one-class density detection sits near 0.69 on both datasets.
+
+**The repair (the ratio) is doing all the work, and it is doing more of it than
+the FF++-only numbers suggested**: 0.6944 → 0.8411 in-dataset, 0.6823 → 0.8357
+cross-dataset. C2 was always the strongest contribution; it is now the only one
+that survives two datasets and two encoders.
+
+---
+
 # Status — 2026-08-22 (b): the full picture, on both datasets
 
 `scripts/full_picture.py` runs every stage in one process on one dataset, on the
