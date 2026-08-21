@@ -1,337 +1,259 @@
 # Hand-off — DeepFakeDet
 
-Last updated: **2026-08-06, 19:10 CEST.** All jobs stopped by request; the GPU is
-idle. Nothing is committed — the working tree has ~20 modified/new files (see
-§7).
+Last updated: **2026-08-22.** The GPU is free of our jobs. Everything is
+committed; the branch is **9 ahead / 2 behind `origin/main`** and needs a merge
+and a push (§7).
 
-Read order for a new session: **this file → `STATUS.md` (the findings, in full)
-→ `PLAN.md` (the CVPR plan, now partly invalidated — see §6)**. `POC.md` and the
-historical appendix at the bottom are the July record and are superseded.
+Read order for a new session: **this file → `STATUS.md` (Findings 0–19, newest
+first) → `PLAN.md` (now largely obsolete — see §6)**. `POC.md` and the July
+appendix are superseded.
 
 ---
 
 ## 1. Where the project actually is
 
-The project set out to transfer PCNET (probabilistic circuit as tractable
-density estimator, NLL as anomaly score) from LLM hallucination detection to
-deepfakes. **As a detector, it does not work, and as of today we know precisely
-why, with numbers.** As a *diagnosis*, it now has a genuinely novel result and a
-quantitative law that no discriminative method could have produced.
+The POC set out to transfer PCNET (probabilistic circuit as tractable density
+estimator) from LLM hallucination detection to deepfakes. **The POC is now
+finished and it has an answer.**
 
-The one-sentence state: **98% of the distance to a state-of-the-art detector is
-in the encoder, not the circuit; every recipe-level fix for the encoder has been
-tested and failed; and the binding constraint is the pseudo-fake distribution,
-whose coverage of a manipulation predicts that manipulation's detectability with
-Spearman ρ = 1.000.**
+The one-sentence state: **two results survive two datasets and a validated
+pipeline — the exact log-ratio is nearly domain-invariant, and exact per-region
+conditionals give the best localization — and everything else this project
+believed for four months was an artefact of a reimplementation that does not
+transfer, or of a comparison against the wrong published number.**
 
-### The measured gap (`results/sbi_g8c16_kd-orc_K8/gap_waterfall.json`)
+### The table that matters (`results/full_picture_*.json`)
 
-Every row measured on the *same crops* — the script scores the encoder on
-exactly the images whose projected features the probe and circuit see.
+Both columns on the **published SBI encoder**, same crops, one process
+(`scripts/full_picture.py`). Only the backbone differs from the older numbers.
 
-| stage | FF++ video AUC | lost |
+| stage | FF++ c23 | Celeb-DF-v2 | drop |
+|---|---|---|---|
+| published SBI (reported, repo table) | — | 0.9287 | — |
+| official encoder, end to end | 0.8657 | 0.8921 | +0.026 |
+| linear probe (supervised, same features) | **0.9192** | **0.8588** | −0.060 |
+| circuit, one-class (best of family) | 0.6944 | 0.6823 | −0.012 |
+| **circuit, exact log-ratio** | 0.8411 | 0.8357 | **−0.005** |
+| circuit, density − mass | 0.3270 | 0.3908 | — |
+
+**Localization, FF++ only** (`results/official_sbi_g8c16_kd-orc_K8/p0_experiments.json`).
+Celeb-DF ships no manipulation masks, so this can never be tested cross-dataset.
+
+| model | patch AUC | per-image | IoU | pointing |
+|---|---|---|---|---|
+| **PC ratio (conditional)** | **0.7137** | **0.7100** | **0.3321** | **0.3886** |
+| mahalanobis | 0.6860 | 0.6541 | 0.2894 | 0.2559 |
+| gmm | 0.6838 | 0.6590 | 0.2870 | 0.3870 |
+| patchcore | 0.6729 | 0.6444 | 0.2723 | 0.2559 |
+| flow | 0.6562 | 0.6280 | 0.2444 | 0.3183 |
+
+---
+
+## 2. The two results that survive
+
+**S1 — the exact log-ratio is nearly domain-invariant.** 0.8411 on FF++ →
+0.8357 on Celeb-DF, a drop of **0.005**, where a supervised probe on *identical
+coordinates* drops 0.060 and the one-class family drops 0.012. It never sees a
+real forgery.
+
+*The caveat that must ship with it:* it never beats the classifier it sits on
+(0.8921 on CDF), and that classifier also needs no real forgeries. So the
+selling point is **stability, not accuracy**, and a reviewer will note that a
+score starting lower has less room to fall. n = 2 datasets cannot separate those.
+
+**S2 — exact per-region conditionals give the best localization.** First on all
+four metrics, including `pointing`, which the circuit *lost* on our own encoder
+(0.3128 vs PatchCore 0.4392). The only stage that got better under the rerun.
+
+*The caveat:* the margin over the **strongest** baseline fell from +0.0655
+(vs patchcore, our encoder) to **+0.0277** (vs mahalanobis, official encoder).
+`PLAN.md`'s pre-registered gate is +0.03 over the strongest patch baseline, so
+**this narrowly misses the gate.** Against PatchCore alone it is +0.0408 and
+clears — quoting only that comparison would clear a gate the result does not.
+Do not do this.
+
+Both rest on the same mechanism, and it is the honest version of "only our model
+can do this": a smooth, decomposable circuit can **condition on 10³ dimensions
+and integrate over a region exactly**. Flows, diffusion models and
+full-covariance Gaussians cannot. (A *diagonal* GMM can do a plain global box —
+so the exclusivity claim must be about the *conditional* query, not integration
+in general.)
+
+---
+
+## 3. What died, and why — do not re-derive these
+
+| claim | status | why |
 |---|---|---|
-| published SBI on FF++ c23 (reported) | 0.9964 | — |
-| **our encoder, end to end** | **0.8312** | **+0.1652** |
-| linear probe on projected features (1024 d) | 0.8591 | −0.0280 |
-| circuit, one-class NLL | 0.8125 | +0.0467 |
-| circuit, exact log-ratio | 0.8283 | −0.0158 |
-| | total **0.1681** | encoder = **98%** |
+| "our encoder is weak, 0.14 behind SotA" | **false premise** | the 0.9964 target is FF++ **raw** from a raw-trained model (paper Table 2, §4.4). No FF++ c23 in-dataset number is published by anyone. Finding 11 |
+| the pipeline is broken | **false** | official weights through our pipeline reproduce CDF **0.9077 vs published 0.9287**, using a different face detector. Finding 12 |
+| F1: SBI leaks a global compression cue | **our bug, not SBI's** | official `dynamic_blend` composites onto the array it returns as the real, and its JPEG is in a *shared* transform. Measured: periphery bit-identical beyond one 8×8 block. Finding "F1 does not generalise" |
+| F9: forgeries are lower-dimensional (mass beats density) | **artefact of our encoder** | the dimension gap **inverts** on the published encoder on *both* datasets (FF++ 838.5 real vs 884.4 fake; CDF 858.0 vs 876.1). `density − mass` = 0.327 / 0.391, below chance. Finding 16 |
+| F14: the circuit beats supervision cross-dataset | **only on the broken encoder** | on official features the probe wins both (0.8588 vs 0.8357). The probe only collapsed on our features because they carried FF++-specific structure. Finding 17 |
+| C5 calibration | **falsified** | ECE 0.780 raw, 0.766 after temperature scaling (T=110) |
+| crop geometry explains the encoder gap | **tested, rejected** | their crop rule buys +0.0058 on FF++, +0.0156 on CDF — inside the noise |
+| hires / SAM / hull / leak-removal fix the encoder | **all failed** | Findings 3, 8; and the ablation **re-ranks** on Celeb-DF (§4) |
 
-The `0.860` encoder number that sat in `STATUS.md` from Aug 4 to Aug 6 was
-**never measured** — no log or JSON produced it. The real value is 0.8312.
-If you find an unsourced number in these docs, distrust it; that one cost a day
-of reasoning built on a wrong anchor.
+### Still unexplained
 
----
-
-## 2. The four findings worth keeping
-
-**F1 — The pseudo-task leaks a global cue that real forgeries do not have.**
-(`scripts/shortcut_audit.py`, `results/shortcut_audit.json`.) Classifying real
-vs self-blend using *only* 8×8 JPEG blocks entirely outside the dilated blending
-mask — pixels the forgery never touches:
-
-| self-blend recipe | leak AUC outside the mask |
-|---|---|
-| what the project trained on | **0.937** |
-| no post-blend re-encode | 0.812 |
-| pristine background only | 0.917 |
-| **pristine background + no re-encode** | **0.500** |
-| **pristine background + symmetric re-encode** | **0.500** |
-
-Two mechanisms, neither sufficient alone: `self_blend` ends with a JPEG q88–96
-re-encode the real image never gets, and `source_target_pair` perturbs *both*
-copies then swaps them with p=0.5, so ~half the time the whole context is the
-degraded copy. Same features on **real FF++ forgeries**: pooled **0.477**
-(per-method 0.47–0.53) — chance, because in a real swap the context *is* the
-original frame. Verified the null is real: under the clean recipe the periphery
-pixels are **bit-identical** (max diff 0 over 40 images,
-`scripts/_check_periphery.py`).
-
-This is **distinct from the published position.** "The Alpha Blending
-Hypothesis" (arXiv 2605.10334) argues detectors are *boundary* searchers and
-explicitly treats SBI as a generic heuristic without dissecting the generator.
-Our signal is not at the boundary and not in the manipulated region at all. If
-it reproduces on the reference SBI implementation it affects the whole
-SBI-derived line (SBI, FSBI, BlenD, …) as a **leakage audit any pseudo-fake
-generator should have to pass**. *This is the most publishable thing here and it
-has not been checked against the official SBI code — do that first (§5).*
-
-**F2 — Coverage under the pseudo-fake density predicts detectability.**
-(`results/sbi_g8c16_kd-orc_K8/family_mixture.json`.)
-
-| manipulation | coverage | mean log-ratio | AUC |
-|---|---|---|---|
-| Deepfakes | 0.733 | −1000 | 0.921 |
-| Face2Face | 0.563 | −1564 | 0.872 |
-| FaceShifter | 0.506 | −1846 | 0.844 |
-| NeuralTextures | 0.456 | −2300 | 0.808 |
-| FaceSwap | 0.297 | −3845 | 0.699 |
-
-**Spearman ρ = 1.000, Pearson r = 0.998** (mean log-ratio vs AUC). n = 5, so
-this is a strong suggestion, not a law — it needs Celeb-DF-v2 / DF40 to become a
-claim. This is the result that *requires* an exactly-normalized density: it is a
-statement in nats about a distribution, not a score.
-
-**F3 — No recipe-level fix recovers the encoder gap.**
-(`results/encoder_ablation.json`, 20 epochs, 16 frames/video, identical protocol.)
-
-| variant | val AUC | vs base | train loss |
-|---|---|---|---|
-| `sam` | 0.8747 | **+0.0030** | 0.0120 |
-| `base` | 0.8716 | — | 0.0155 |
-| `hull` | 0.8610 | −0.0106 | 0.0267 |
-| `all` | 0.8543 | −0.0173 | 0.0306 |
-| `noleak` | 0.8468 | −0.0249 | 0.0197 |
-
-SAM — the most plausible difference from published SBI — buys noise.
-**Caveat:** val AUC falls monotonically with training loss, and we cannot yet
-separate "harder pseudo-task transfers worse" from "harder task is less
-converged at a fixed 20-epoch budget". Also `noleak` is confounded:
-`compress_policy=symmetric` re-encodes training images while val/test stay
-untouched. `noleak_clean` exists to fix that and **has not run**.
-
-**F4 — The saturation is the encoder's fault, not the leak's.** A falsifiable
-prediction was made and **failed**: on leak-free blends the hybrid λ sweep is
-still fully saturated (real-vs-blend **1.0000**, λ moves FF++ only 0.825→0.813).
-Removing the leak does not make self-blends harder to separate *in SBI feature
-space*, because that space was built by training on exactly this
-discrimination. The representation and the pseudo-fakes are the same
-construction, so the density task on top is degenerate by design.
-(λ=0 still destroys localization, 0.678 → 0.462.)
-
-### Negatives that close doors (don't redo these)
-
-- **The projection is not a bottleneck and is not even lossy.** Probe on 16×64
-  = 0.8591 > encoder 0.8312. **`sota_push.sh`'s `grid=12, out_dim=32` sweep is
-  cancelled** — it was chasing 0.001.
-- **The mechanism mixture buys nothing.** `p_mix` over 4 families = 0.8286;
-  every single family alone = 0.827–0.831, with near-identical per-method
-  breakdowns even for families designed to deviate in opposite directions. At
-  log-ratios of thousands of nats one component dominates the logsumexp, so the
-  mixture degenerates to a max.
-- **The exact family posterior is uninformative.** Real faces get `blend` 0.599;
-  every manipulation gets `blend` 0.49–0.66. No Face2Face→`render` structure, at
-  image or region level. The encoder collapses mechanisms it was never asked to
-  distinguish.
-- **C5 (calibration) is not supported.** ECE 0.780 raw, 0.766 after temperature
-  scaling (T = 110); risk–coverage 0.780 → 0.588 at 24% coverage. The ranking is
-  fine, the probabilities are meaningless. **Drop C5 from PLAN.md's contribution
-  list or rewrite it as a negative.**
+**`noleak_clean` costs 0.064 in-dataset AND 0.063 cross-dataset.** Removing the
+leak cleanly (`pristine_background=True, compress_policy="none"`) makes the
+encoder worse *everywhere* — 0.8081 FF++ val, 0.6559 CDF, vs base 0.8716 /
+0.7186. The obvious explanations are excluded: it is not a train/test
+compression shift (it survives a change of dataset) and not lost compression
+exposure (`_augment` still applies JPEG q40–100 at p=0.3 either way). Open since
+Aug 6. If F1 is written up at all, this needs an answer first.
 
 ---
 
-## 3. Machine, environment, data
+## 4. The ablation, re-ranked on Celeb-DF
+
+In-dataset val AUC was the wrong metric for every conclusion in Finding 3.
+Spearman(FF++ val, CDF) = **0.74**.
+
+| variant | FF++ val | **CDF** |
+|---|---|---|
+| **hull** | 0.8610 | **0.7370** |
+| sam | 0.8747 | 0.7333 |
+| base | 0.8716 | 0.7186 |
+| all | 0.8543 | 0.6837 |
+| hires | 0.7612 | 0.6837 |
+| hires_sam | 0.8368 | 0.6801 |
+| noleak | 0.8468 | 0.6711 |
+| noleak_clean | 0.8081 | 0.6559 |
+| all_clean | 0.8333 | 0.6357 |
+
+`hull` looked like a loss in-dataset (−0.011, dismissed as noise) and is the
+**best** cross-dataset variant. Randomising the hull so one boundary geometry
+cannot be memorised is worth +0.018 where it matters.
+
+Run-to-run noise at this protocol is **≈ ±0.02** (Finding 8, from two runs of
+the same variants). Anything smaller is not a result.
+
+---
+
+## 5. Machine, environment, data
 
 ```bash
-ssh jawa17@192.168.1.8            # RTX 4080 16 GB, 62 GB RAM, 24 cores, Ubuntu
+ssh jawa17@192.168.1.8            # RTX 4080 16 GB, Ubuntu
 repo   ~/Documents/Unitn/PhD/Main-Project/GitHub/DeepFakeDet
 data   ~/deepfake_data            # NOT in the repo
-PY     ~/miniconda3/envs/expllm_env/bin/python    # torch 2.10+cu128, timm, mediapipe
+PY     ~/miniconda3/envs/expllm_env/bin/python
 ```
 
-**Disk is the binding constraint: 57 GB free.** `~/deepfake_data/raw/ffpp_zip`
-(17 GB) is redundant — the videos are unzipped at `raw/ffpp` (17 GB) and the
-crops are extracted. Deleting the zip is the easiest 17 GB back.
+**Disk: 83 GB free (91% used).** `raw/` is 43 GB, `features/` 11 GB (of which
+`combined/` alone is 4.9 GB and can be deleted — see §3, it does not beat its
+own better source).
 
-Sync from the Mac (there is no shared checkout; the workstation is a copy):
+**The `tsp` queue is SHARED with your ExpLLMble project.** At the time of
+writing an ExpLLMble ablation is running on the GPU. **Never `tsp -C` or kill
+by PID** — check `tsp -l` and only touch jobs you recognise.
 
-```bash
-cd ~/Documents/UNITN/PHD/MAIN_Project/DeepFakeDet
-rsync -az --exclude __pycache__ --exclude .DS_Store \
-  pcdf scripts tests configs STATUS.md hands_off.md \
-  jawa17@192.168.1.8:~/Documents/Unitn/PhD/Main-Project/GitHub/DeepFakeDet/
-```
-
-### Data state (exact, as of the stop)
+### Data state
 
 | artefact | state |
 |---|---|
-| `crops/` (256px q95) | complete, 183,723 crops — everything published so far uses this |
-| `crops_hires/` (380px q100 4:4:4) | **TRAIN reals only** (696 dirs, 2.1 GB). Manifest `manifests/ffpp_ingested_crops_hires.csv` lists train only. **VAL was killed mid-ingest and must be redone.** |
-| `features/{srm,clip,spectral,sbi}/` | complete |
-| `features/sbi/*_blend-{blend,render,overshoot,statistical}P.*` | complete (pristine-background per-family sets) |
-| `models/sbi_effnetb4.pt` | the encoder everything uses — val 0.8722, **test 0.8312** |
-| `models/sbi_ab_{base,noleak,sam,hull,all}.pt` | the ablation checkpoints |
+| `crops/` (256px q95, mediapipe, margin 1.3) | complete, 183,723 crops. Everything uses this |
+| `crops_hires/` (380px q100 4:4:4) | complete now: train reals 706/720, val all 6 methods 811/840. `hires` failed anyway (Finding 8) |
+| `raw/celebdf/` | **Celeb-DF-v2, extracted.** `Celeb-real/`, `YouTube-real/`, `Celeb-synthesis/`, `List_of_testing_videos.txt`. Ingested: 516/518 test videos, 16,059 crops |
+| `models/official_sbi/FFc23.tar` | **their released FF++ c23 weights.** 706 tensors, epoch 99 |
+| `features/{srm,clip,spectral,sbi,combined,official_sbi}/` | all built |
+| `models/pc_official_sbi_*`, `ratio_official_sbi_*`, `baselines_official_sbi_*` | the official arm, fitted |
+| `models/sbi_ab_*.pt` | 9 ablation checkpoints |
 
-Results JSONs on the workstation under `~/deepfake_data/results/`:
-`shortcut_audit.json`, `encoder_ablation.json`, and in
-`sbi_g8c16_kd-orc_K8/`: `gap_waterfall.json`, `family_mixture.json`,
-`hybrid_sweep_noleak.json`, `probe.json`, plus the Aug-4 files.
-**None of these are in the repo — pull them before the machine is wiped.**
+**All 40+ result JSONs are now committed under `results/`.** They are no longer
+workstation-only.
 
 ---
 
-## 4. Resume commands
+## 6. What this does to PLAN.md
 
-```bash
-cd ~/Documents/Unitn/PhD/Main-Project/GitHub/DeepFakeDet
-PY=~/miniconda3/envs/expllm_env/bin/python
-```
+`PLAN.md` describes a CVPR 2027 paper with six contributions. **Four are dead**
+(C1's novel parts, C4's family-posterior version, C5, and the detection-parity
+premise). The 14-week timeline assumed data landing in week 2 and is three weeks
+behind with a different destination.
 
-**(a) Finish the hires ingest** — required before the hires variants can train:
+**Rewrite it around S1 and S2.** The honest paper is roughly:
 
-```bash
-$PY -u -m pcdf.cli -c configs/ffpp_sbi.yaml \
-  -s data.crop_size=380 -s data.jpeg_quality=100 -s data.workers=6 \
-  -s data.n_frames_test=8 \
-  ingest --dataset ffpp --splits val --crops-dir crops_hires   # ~6 min
-```
+> *What exact tractable inference buys deepfake forensics — and what it doesn't.*
+> A domain-invariant one-class detection score that never beats the classifier
+> it sits on; the best localization by a margin that just misses our own
+> pre-registered gate; and an accounting of five results that looked real and
+> were not.
 
-**(b) The four variants that never ran** (`encoder_ablation.py` skips anything
-already in the results file, so this only runs what is missing):
-
-```bash
-$PY -u scripts/encoder_ablation.py --epochs 20 --frames-per-video 16 --workers 8 \
-    --variants noleak_clean all_clean          # ~45 min — the unconfounded leak test
-$PY -u scripts/encoder_ablation.py --epochs 20 --frames-per-video 16 --workers 8 \
-    --variants hires hires_sam                 # ~75 min — the last untested hypothesis
-$PY scripts/show_ablation.py                   # table
-```
-
-Long jobs: `setsid nohup … > log 2>&1 < /dev/null &` in its **own** ssh call.
-Combining `pkill` and a launch in one ssh invocation kills the launch too.
-
-**(c) Inspect what already exists:**
-
-```bash
-$PY scripts/show_ablation.py
-$PY scripts/show_mixture.py
-```
+Venue: **UAI / AISTATS / TMLR.** Not CVPR — the detection numbers are not
+competitive and the localization margin is small. That last section is not
+padding: this project found that four months of conclusions rested on an
+unsourced target from the wrong compression level and a reimplementation nobody
+had tested cross-dataset. Written up properly it is useful to the field.
 
 ---
 
-## 5. What to do next, in priority order
+## 7. Immediate actions
 
-1. **Validate F1 against the official SBI implementation.** Everything about the
-   leak is currently a statement about *our* reimplementation of `self_blend`.
-   Clone Shiohara & Yamasaki's released code, generate blends with it, and run
-   `scripts/shortcut_audit.py --tests T1` on those. If the leak is there too,
-   F1 is a contribution to the whole field and the paper writes itself. If it is
-   not, F1 is a bug report about our code and must be reported that way. **This
-   is cheap (CPU, ~20 min) and it decides how big the result is. Do it first.**
-2. **Run (a)+(b) above.** `hires` is the only untested cause of the encoder gap.
-   If it also fails, stop trying to reach detection parity.
-3. **Get Celeb-DF-v2.** F2 (ρ = 1.000 on n = 5) is the strongest positive result
-   and needs cross-dataset points to be a claim rather than an anecdote.
-   Ingestion is already written (`build_celebdf_manifest`); it is one command on
-   arrival. Official request form — not something a session can do for you.
-4. **Rewrite `PLAN.md`.** See §6.
-5. Optional, cheap: 3 seeds on the `base` / `sam` / `hires` variants — the
-   0.003–0.03 differences in F3 are currently single-seed and some are noise.
+1. **Merge and push.** 9 ahead, 2 behind `origin/main`:
+   `git pull --no-rebase && git push`. Nothing is backed up until this happens.
+2. **Rewrite `PLAN.md`** per §6 before any further experiments.
+3. **Decide on `noleak_clean`** (§3). Either explain it or drop F1 from the
+   paper entirely.
+4. Optional, cheap: delete `features/combined/` (4.9 GB) and
+   `raw/ffpp_zip` if it reappears.
 
----
+### If more evidence is wanted before writing
 
-## 6. What this does to the CVPR plan
-
-`PLAN.md` §2 lists six contributions. After today:
-
-- **C1 (diagnosis)** — *stronger*. Now dilution + inversion **+ F1 (leakage) +
-  F2 (coverage predicts detectability)**. This is the paper.
-- **C2 (repair, the ratio)** — unchanged and still model-agnostic (GMM 0.830 vs
-  circuit 0.828). The mixture extension **failed** to improve it.
-- **C3 (localization)** — unchanged, still the circuit's only exclusive win
-  (0.737 vs PatchCore 0.671). Untouched today.
-- **C4 (model-level explanation)** — the *family posterior* version **failed**.
-  The region-divergence version from Aug 4 still stands.
-- **C5 (calibration)** — **falsified. Remove or rewrite as a negative.**
-- **C6 (systems)** — unchanged and solid.
-
-The week-1 exit criterion was "detection ≥ 0.90 in-dataset **or documented why
-not**". It is now documented why not, in five independent ways. **Plan B (§9 of
-PLAN.md) is the live branch**, and title candidate (2), *"Fakes Are Not Outliers:
-Diagnosing and Repairing Likelihood-Based Deepfake Detection"*, is now clearly
-the right framing — with F1 and F2 as the new spine. The venue argument for
-UAI/AISTATS/TMLR is stronger than it was this morning.
+* **Seeds.** Every ablation number is single-seed against a ±0.02 noise floor.
+  3 seeds on `base` / `hull` / `sam`, scored on **CDF**, would make §4 solid.
+* **A third dataset for S1.** DFDCP (85.51%) or FFIW (83.22%) are in the repo's
+  reproduction table, so the pipeline can be validated against them the way
+  Celeb-DF was. n = 2 is thin for an invariance claim.
+  **DFD is not obtainable**: all three FaceForensics mirrors are dead or 403
+  (`canis` and `falas` refuse connections, `kaldir` 403s behind its redirect).
+* **Localization on a second mask source.** DF40 or FFIW if either ships masks;
+  Celeb-DF does not.
 
 ---
 
-## 7. Uncommitted work (nothing is in git)
+## 8. Gotchas
 
-Modified: `STATUS.md`, `pcdf/cli.py`, `pcdf/data/faces.py`, `pcdf/data/sbi.py`,
-`pcdf/models/supervised.py`, `pcdf/stages.py`, `scripts/hybrid_sweep.py`.
+1. **`collect_real_items` / `collect_labeled_items` hardcode
+   `manifests/ffpp_ingested.csv`.** `crops_dirname` only redirects the directory
+   lookup, and a missing directory is **silently skipped**. That is how the
+   first `hires` run trained on 14.6% less data and finished without a warning.
+2. **The official SBI weights are not drop-in.** `efficientnet_pytorch` (not
+   timm), the checkpoint stores the `Detector` wrapper so `net.` must be
+   stripped, a 2-way head, and **raw [0,1] input with no ImageNet
+   normalization**. Loading them into our timm extractor with `strict=False`
+   drops nearly every tensor and does not raise. `OfficialSbiExtractor` refuses
+   any mismatch instead.
+3. **`log_ball` has a float32 precision floor.** The identity holds to 3e-4 at
+   eps=1e-3 and degrades in *both* directions. **Never use eps < 1e-3 in
+   float32** — it degrades silently. Pinned by `tests/test_mass.py`.
+4. **`patch_surprisal` chunking scales with d now.** `region_log_marginals`
+   expands (B, Q) to B·Q rows before the leaf layer; a fixed `chunk_rows=8192`
+   never chunked at B=64, P=64, so d=6080 fit in 16 GB and d=7104 OOM'd —
+   *after* training finished, inside `calibrate`.
+5. **Distrust any unsourced number in these docs.** This has now cost the
+   project twice: the `0.860` encoder figure (Aug 6) and the `0.9964` target
+   (Aug 4 → Aug 21, four months of misdirection). If a number has no artefact
+   behind it, re-measure it before reasoning from it.
+6. **In-dataset AUC ranks variants wrongly.** §4. Score on Celeb-DF.
+7. `setsid nohup` and `tsp` both survive the parent ssh dying. To stop a `tsp`
+   chain, `tsp -r <id>` the queued jobs first — killing the running child just
+   starts the next one.
 
-New: `pcdf/models/family_mixture.py`, `tests/test_family_mixture.py`,
-`scripts/{shortcut_audit,encoder_ablation,family_mixture_experiment,gap_waterfall,show_ablation,show_mixture,_check_periphery}.py`,
-`scripts/queue_{mixture,waterfall,ablation2,hires}.sh`.
-
-Test suite: **23 passed** (9 new, covering shared region graph, log Z ≈ 0 per
-mixture component, posterior normalisation, ratio = logsumexp identity).
-
-### New capability added today
-
-- `self_blend(..., pristine_background=, hull_variety=)`, `multi_family_blend(...)`
-  likewise; `SbiConfig` gained `compress_policy` / `pristine_background` /
-  `hull_variety` / `optimizer` (SAM implemented) / `crops_dirname` / `tag`.
-- `pcdf features --pseudo-family NAME --pristine-background`.
-- `pcdf ingest --splits ... --crops-dir NAME` (a named crop set writes a
-  **named manifest** — a partial re-ingest must never clobber
-  `ffpp_ingested.csv`, which is the index the whole pipeline reads).
-- Crops at `jpeg_quality >= 98` now also disable 4:2:0 chroma subsampling.
-
----
-
-## 8. Gotchas (new today; the July ones are in the appendix)
-
-1. **Pseudo-blend feature extraction used to blend the forged videos too**, then
-   discard them via the `label==0` filter downstream — 6× the work for nothing.
-   Fixed in `cmd_features`; if you touch that path, keep the filter.
-2. **`compress_policy=symmetric` is not a clean control.** It re-encodes
-   training images only, so it swaps a leak for a train/test shift. Use
-   `pristine_background=True, compress_policy="none"` (`noleak_clean`) — the
-   leak sweep puts both at exactly 0.500.
-3. **Group your splits when auditing paired data.** A random row split put each
-   real and its bit-identical blend twin on opposite sides; the model memorised
-   the vector with the wrong label and a true null reported AUC 0.35 instead of
-   0.500. `auc_lr(..., g0=, g1=)` in `shortcut_audit.py` handles it.
-4. **Restrict "periphery-only" features to periphery blocks — all of them.** The
-   first version averaged blockiness over the whole frame, letting the
-   manipulated region leak into a measurement whose entire point was to exclude
-   it.
-5. **`setsid nohup` survives everything**, including the parent ssh being
-   killed — verified today when four local wrappers were terminated and every
-   remote job kept running. To actually stop a chain, **kill the parent `bash
-   scripts/queue_*.sh` first**, then the python children, or the script simply
-   launches the next stage.
-6. **Model selection on 4 frames/video is optimistic.** The encoder's val AUC is
-   0.8722 and its test AUC is 0.8312 — a 0.041 gap that hid for two days.
+Test suite: **28 passed** (5 new in `tests/test_mass.py`).
 
 ---
 
-# Appendix — July 2026 POC record (superseded, kept for provenance)
+# Appendix — superseded records
 
-The LFW/OpenForensics POC and its findings are in `POC.md`. The two conclusions
-that still matter:
+The Aug 6 hand-off and the July POC record are in git history
+(`git show 3701bf4:hands_off.md`) and `POC.md`. Two July conclusions still hold:
 
 - **Semantic embeddings are dead on arrival.** Pooled ResNet/ImageNet/CLIP
-  features put every density model at chance on real swaps. Artifact signal is
-  local and low-level. (Reproduced at scale on FF++: the SRM arm, 0.624.)
+  features put every density model at chance. Reproduced at scale: CLIP 0.536.
 - **The `fit_leaves(jitter=…)` product-of-marginals collapse** in
-  `src/bak/allinone_probabilistic_circuits.py`: only scalar-`mu` leaves get
-  jitter, so `GaussianMixtureLeaf` starts with K identical sibling subtrees and
-  the circuit silently degenerates. Detector: learned and random vtrees give
-  byte-identical NLL. The tensorized `pcdf/circuits/einsum_pc.py` used
-  throughout the current work does **not** have this bug (`weight_jitter` is
-  applied per component and `tests/test_equivalence.py` pins it), but the old
-  library in `src/bak/` still does.
+  `src/bak/allinone_probabilistic_circuits.py` — only scalar-`mu` leaves get
+  jitter, so the circuit silently degenerates. `pcdf/circuits/einsum_pc.py` does
+  **not** have this bug (`tests/test_equivalence.py` pins it); the old library
+  in `src/bak/` still does.
