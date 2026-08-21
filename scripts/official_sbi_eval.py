@@ -97,17 +97,81 @@ def load_official(checkpoint: Path, device: str) -> OfficialSbiDetector:
     return model.eval().to(device)
 
 
-@torch.no_grad()
-def score_crops(model: nn.Module, paths, device: str, batch: int = 64) -> np.ndarray:
+_LMK_CACHE: dict = {}
+
+
+def _landmarks_for(path: Path):
+    """Dense landmarks for one stored crop, in CROP coordinates.
+
+    `landmarks.npy` is (n_frames, 478, 2) indexed by the position of the file in
+    the sorted listing — the same convention `collect_real_items` uses.
+    """
+    d = path.parent
+    ent = _LMK_CACHE.get(d)
+    if ent is None:
+        lp = d / "landmarks.npy"
+        order = {q.name: j for j, q in enumerate(sorted(d.glob("[0-9]*.jpg")))}
+        ent = _LMK_CACHE[d] = (np.load(lp) if lp.exists() else None, order)
+    lmks, order = ent
+    j = order.get(path.name)
+    if lmks is None or j is None or j >= len(lmks):
+        return None
+    return lmks[j]
+
+
+def official_recrop(img: np.ndarray, lmk: np.ndarray) -> np.ndarray:
+    """
+    `crop_face(..., crop_by_bbox=True, margin=False, phase='test')` applied
+    inside our stored crop.
+
+    Their rule: take the detector bbox, add w/4 and h/4 on each side, then halve
+    those margins for test -> bbox + w/8 and h/8.  The result is NOT square and
+    is resized to 380x380 anyway, so faces arrive at the network STRETCHED.
+    Ours is a square of side max(w,h)*1.3, resized without distortion.  This
+    isolates that difference: same videos, same detector, same frames, only the
+    crop rule changes.
+
+    LIMIT OF THIS TEST.  We re-crop inside a stored 256px crop, so their tighter
+    region is upsampled from perhaps 150x180 rather than taken at native
+    resolution from the frame.  That can only cost accuracy, so this UNDERSTATES
+    the benefit of their geometry; a positive result here is a lower bound.
+    Their bbox also comes from RetinaFace where ours is the hull of mediapipe's
+    dense landmarks, so the boxes are similar but not identical.
+    """
     import cv2
 
-    out, buf = [], []
+    H, W = img.shape[:2]
+    x0, y0 = float(lmk[:, 0].min()), float(lmk[:, 1].min())
+    x1, y1 = float(lmk[:, 0].max()), float(lmk[:, 1].max())
+    w, h = x1 - x0, y1 - y0
+    if w <= 1 or h <= 1:
+        return img
+    xa = max(0, int(x0 - w / 8))
+    ya = max(0, int(y0 - h / 8))
+    xb = min(W, int(x1 + w / 8) + 1)
+    yb = min(H, int(y1 + h / 8) + 1)
+    if xb - xa < 8 or yb - ya < 8:
+        return img
+    return img[ya:yb, xa:xb]
+
+
+@torch.no_grad()
+def score_crops(model: nn.Module, paths, device: str, batch: int = 64,
+                crop_rule: str = "stored") -> np.ndarray:
+    import cv2
+
+    out, buf, n_recropped = [], [], 0
     for i, p in enumerate(paths):
         img = cv2.imread(str(p))
         if img is None:
             buf.append(np.zeros((INPUT_SIZE, INPUT_SIZE, 3), np.uint8))
         else:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            if crop_rule == "official":
+                lmk = _landmarks_for(Path(p))
+                if lmk is not None:
+                    img = official_recrop(img, lmk)
+                    n_recropped += 1
             buf.append(cv2.resize(img, (INPUT_SIZE, INPUT_SIZE)))  # INTER_LINEAR
         if len(buf) == batch or i == len(paths) - 1:
             x = torch.from_numpy(np.stack(buf)).permute(0, 3, 1, 2).to(device)
@@ -116,6 +180,9 @@ def score_crops(model: nn.Module, paths, device: str, batch: int = 64) -> np.nda
             buf = []
             if (i + 1) % 5000 < batch:
                 print(f"[official] {i + 1}/{len(paths)}", flush=True)
+    if crop_rule == "official":
+        print(f"[official] re-cropped {n_recropped}/{len(paths)} "
+              f"({100 * n_recropped / max(len(paths), 1):.1f}% had landmarks)")
     return np.concatenate(out)
 
 
@@ -127,6 +194,11 @@ def main() -> None:
                     help="default: <root>/models/official_sbi/FFc23.tar")
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--crop-rule", choices=["stored", "official", "both"],
+                    default="both",
+                    help="stored: our square margin-1.3 crop as saved. "
+                         "official: their bbox+w/8,h/8 non-square crop, "
+                         "stretched to 380 — re-derived inside the stored crop.")
     ap.add_argument("--ours", type=float, default=0.8312,
                     help="our encoder's measured FF++ video AUC (gap_waterfall)")
     ap.add_argument("--published", type=float, default=0.9964,
@@ -159,51 +231,74 @@ def main() -> None:
           f"{int((y == 1).sum())} forged", flush=True)
 
     model = load_official(ckpt, cfg["device"])
-    s = score_crops(model, index["path"], cfg["device"], a.batch)
+    rules = ["stored", "official"] if a.crop_rule == "both" else [a.crop_rule]
+    scores = {r: score_crops(model, index["path"], cfg["device"], a.batch, r)
+              for r in rules}
 
-    def agg(fn):
-        vids = sorted(set(vkey.tolist()))
-        vs = np.array([fn(s[vkey == v]) for v in vids])
-        vy = np.array([int(y[vkey == v].max()) for v in vids])
-        return vs, vy
+    def evaluate(sc):
+        r = {"auc_frame": float(roc_auc_score(y, sc))}
+        for name, fn in (("mean", np.mean), ("max", np.max)):
+            vids = sorted(set(vkey.tolist()))
+            vs = np.array([fn(sc[vkey == v]) for v in vids])
+            vy = np.array([int(y[vkey == v].max()) for v in vids])
+            r[f"auc_video_{name}"] = float(roc_auc_score(vy, vs))
+        per = {}
+        for meth in sorted(set(index["method"][y == 1].tolist())):
+            m = (y == 0) | (index["method"] == meth)
+            vids = sorted(set(vkey[m].tolist()))
+            vs = np.array([sc[m][vkey[m] == v].mean() for v in vids])
+            vy = np.array([int(y[m][vkey[m] == v].max()) for v in vids])
+            per[meth] = float(roc_auc_score(vy, vs))
+        r["per_method"] = per
+        r["recovered_fraction_of_gap"] = \
+            (r["auc_video_mean"] - a.ours) / (a.published - a.ours)
+        return r
 
     res = {"checkpoint": str(ckpt), "n_crops": int(len(y)),
-           "auc_frame": float(roc_auc_score(y, s))}
-    for name, fn in (("mean", np.mean), ("max", np.max)):
-        vs, vy = agg(fn)
-        res[f"auc_video_{name}"] = float(roc_auc_score(vy, vs))
-    per = {}
-    for meth in sorted(set(index["method"][y == 1].tolist())):
-        m = (y == 0) | (index["method"] == meth)
-        vids = sorted(set(vkey[m].tolist()))
-        vs = np.array([s[m][vkey[m] == v].mean() for v in vids])
-        vy = np.array([int(y[m][vkey[m] == v].max()) for v in vids])
-        per[meth] = float(roc_auc_score(vy, vs))
-    res["per_method"] = per
-    res["ours_same_crops"] = a.ours
-    res["published_reported"] = a.published
+           "ours_same_crops": a.ours, "published_reported": a.published,
+           "by_crop_rule": {r: evaluate(sc) for r, sc in scores.items()}}
 
-    v = res["auc_video_mean"]
-    res["recovered_fraction_of_gap"] = (v - a.ours) / (a.published - a.ours)
-    print(f"\n  frame AUC                 {res['auc_frame']:.4f}")
-    print(f"  video AUC (mean, theirs)  {v:.4f}")
-    print(f"  video AUC (max)           {res['auc_video_max']:.4f}")
-    print("\n  per method (mean agg):")
-    for k, val in per.items():
-        print(f"    {k:<16}{val:.4f}")
-    print(f"\n  our encoder, same crops   {a.ours:.4f}")
-    print(f"  their reported            {a.published:.4f}")
-    print(f"  -> recovers {100 * res['recovered_fraction_of_gap']:.0f}% of the "
-          f"encoder gap on OUR crops")
-    if v >= 0.97:
-        print("  VERDICT: crop conventions are compatible — adopting their "
-              "encoder is a re-extraction, nothing more.")
-    elif v >= a.ours + 0.05:
-        print("  VERDICT: clearly better than ours but short of published. "
-              "Their crop geometry matters; port `crop_face` before extracting.")
-    else:
-        print("  VERDICT: no better than ours on these crops. The gap is in the "
-              "preprocessing, not the weights — port their face pipeline first.")
+    print(f"\n{'crop rule':<12}{'frame':>9}{'video mean':>12}{'video max':>11}"
+          f"{'% of gap':>10}")
+    print("-" * 54)
+    for r, v in res["by_crop_rule"].items():
+        print(f"{r:<12}{v['auc_frame']:>9.4f}{v['auc_video_mean']:>12.4f}"
+              f"{v['auc_video_max']:>11.4f}"
+              f"{100 * v['recovered_fraction_of_gap']:>9.0f}%")
+    print("-" * 54)
+    print(f"{'our encoder':<12}{'':>9}{a.ours:>12.4f}")
+    print(f"{'published':<12}{'':>9}{a.published:>12.4f}")
+
+    print("\nper method (video, mean agg):")
+    meths = sorted(next(iter(res["by_crop_rule"].values()))["per_method"])
+    hdr = "".join(f"{r:>12}" for r in res["by_crop_rule"])
+    print(f"{'':<16}{hdr}")
+    for m in meths:
+        row = "".join(f"{res['by_crop_rule'][r]['per_method'][m]:>12.4f}"
+                      for r in res["by_crop_rule"])
+        print(f"{m:<16}{row}")
+
+    best = max(res["by_crop_rule"], key=lambda r: res["by_crop_rule"][r]["auc_video_mean"])
+    v = res["by_crop_rule"][best]["auc_video_mean"]
+    if "official" in res["by_crop_rule"] and "stored" in res["by_crop_rule"]:
+        delta = (res["by_crop_rule"]["official"]["auc_video_mean"]
+                 - res["by_crop_rule"]["stored"]["auc_video_mean"])
+        res["crop_rule_delta"] = delta
+        print(f"\ncrop rule alone: {delta:+.4f} "
+              f"(their geometry vs ours, same weights, same frames)")
+        if delta > 0.05:
+            print("  VERDICT: crop geometry is a large part of the gap. Port "
+                  "`crop_face` into ingest and re-extract at native resolution "
+                  "-- this test upsamples from a 256px crop, so it is a LOWER "
+                  "bound on the benefit.")
+        elif delta > 0.02:
+            print("  VERDICT: crop geometry matters but does not explain the "
+                  "gap on its own. The detector (RetinaFace vs mediapipe) and "
+                  "the evaluation protocol are the remaining suspects.")
+        else:
+            print("  VERDICT: crop geometry is NOT the explanation. Suspect the "
+                  "detector or the published protocol; run their full inference "
+                  "pipeline on our videos to separate those.")
 
     dest = root / "results" / "official_sbi_eval.json"
     dest.parent.mkdir(parents=True, exist_ok=True)

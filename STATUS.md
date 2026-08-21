@@ -1,3 +1,85 @@
+# Status — 2026-08-21 (night): the 0.9964 target is the WRONG NUMBER
+
+## Finding 11: two corrections, one of which invalidates the headline gap
+
+### 11a — crop geometry is NOT the explanation (tested, rejected)
+
+Finding 10 proposed that their tighter, aspect-stretched crop explained the
+remaining gap. Tested and rejected. `scripts/official_sbi_eval.py --crop-rule
+both` re-derives their `crop_face(crop_by_bbox=True, phase='test')` rule inside
+our stored crops — same videos, same detector, same frames, only the crop rule
+changes:
+
+| crop rule | frame AUC | video AUC |
+|---|---|---|
+| ours (square, max(w,h)×1.3) | 0.8415 | 0.8496 |
+| theirs (bbox + w/8, h/8, stretched to 380) | 0.8483 | **0.8554** |
+
+**+0.0058** — inside the ±0.02 noise floor. The test upsamples from a 256px crop
+so it understates the benefit, but not by the 25× that would be needed. Crop
+geometry is not where the gap lives.
+
+### 11b — the 0.9964 we have been chasing is FF++ RAW, not c23
+
+From the paper (arXiv:2204.08376), **Table 2**, "Cross-Manipulation Evaluation
+on FF++": `EFNB4 + SBIs (Ours)` scores DF 99.99, F2F 99.88, FS 99.91, NT 98.79,
+**FF++ 99.64**. Section 4.4 states: *"We use the **raw** version for evaluation
+as well as the competitors."*
+
+**We evaluate on FF++ c23.** The paper reports no FF++ c23 in-dataset number,
+and neither does the repository — its reproduction table gives only
+cross-dataset results for the c23 weights:
+
+| training data | CDF | DFD | DFDC | DFDCP | FFIW |
+|---|---|---|---|---|---|
+| FF-raw | 93.82 | 97.87 | 73.01 | 85.70 | 84.52 |
+| **FF-c23** | **92.87** | **98.16** | **71.96** | **85.51** | **83.22** |
+
+So the `+0.1652` "encoder gap" at the top of `gap_waterfall.json`, and the claim
+that 98% of the distance is the encoder, are **measured against a target from a
+different compression level and a different model**. The 98% decomposition is
+still internally valid — those rows were all measured on our crops — but the
+*size* of the gap, and therefore the entire "our encoder is broken" framing, is
+not established.
+
+**This is the second unsourced-number incident in this project.** The first cost
+a day (the `0.860` encoder figure that no artefact produced, corrected on
+Aug 6). This one has been steering the work since Aug 4. The rule from that
+correction — *if you find an unsourced number in these docs, distrust it* —
+should have been applied to 0.9964 too.
+
+### What is actually established
+
+* Their released c23 weights, on our c23 crops: **0.8610** video AUC
+  (mean-over-frames, which is their protocol: 32 frames/video, max over faces
+  within a frame, mean over frames — §4.1 and §4.3).
+* Our encoder, same crops: **0.8312**.
+* Difference: **+0.0298**, just above the noise floor.
+* Crop geometry accounts for **+0.0058** of that.
+* Whether 0.8610 is a *bad* number for FF++ c23 one-class detection is
+  **unknown**, because no published c23 in-dataset figure exists to compare it
+  to.
+
+### The only reproducible reference point, and it needs Celeb-DF-v2
+
+There is exactly one published number we can check our pipeline against with the
+weights we now hold: **CDF 92.87%** for the FF-c23 model. Run the downloaded
+checkpoint through our pipeline on Celeb-DF-v2 and:
+
+* ≈92.9 → the pipeline is correct end to end, 0.86 on FF++ c23 is simply what
+  this model does here, and the "encoder gap" narrative is retired.
+* ≪92.9 → the defect is in our pipeline and is now localized by a published
+  reference rather than guessed at.
+
+Celeb-DF-v2 has been the top-priority blocked item since Aug 6 for Finding 2.
+It is now also **the only way to validate the pipeline at all**. Three
+independent reasons, one unfilled request form.
+
+Until it runs, the honest statement is: *we do not know how large the gap is,
+because we have never had a comparable published number.*
+
+---
+
 # Status — 2026-08-21 (evening): the encoder gap is PREPROCESSING, not weights
 
 ## Finding 10: the official SBI weights score 0.8610 on our crops
