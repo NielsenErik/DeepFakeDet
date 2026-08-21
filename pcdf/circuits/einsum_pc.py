@@ -405,6 +405,56 @@ class EinsumPC(nn.Module):
             obs[0, int(i)] = False
         return self._run(x, observed=obs, boxes=(lo, hi, bm), chunk=chunk)
 
+    def log_ball(self, x: torch.Tensor, eps: torch.Tensor,
+                 chunk: Optional[int] = None) -> torch.Tensor:
+        """
+        Exact log P(u : |u_i - x_i| <= eps_i for all i) — the probability MASS
+        of the axis-aligned box centred on each sample.
+
+        WHY THIS AND NOT `log_prob`.  A density is mass per unit volume, and the
+        two come apart exactly where likelihood-based anomaly detection fails.
+        Data confined to a thin, low-dimensional sheet gets a large density and
+        almost no mass, which is the mechanism Kamkari et al. (ICML 2024,
+        arXiv:2403.18910) identify behind the likelihood OOD paradox: models
+        assign OOD inputs high likelihood yet never generate them, because the
+        mass around them is ~0.  They must estimate Local Intrinsic Dimension as
+        a stand-in for volume, since a flow or a diffusion model cannot
+        integrate its own density.  A smooth, decomposable circuit with
+        tractable-CDF leaves can, in closed form and in one pass — the leaf
+        contributes log ∫_lo^hi f (`GaussianMixtureLeafLayer.log_interval`) and
+        the sum-product structure above it is unchanged.
+
+        It also answers Le Lan & Dinh (Entropy 2021, arXiv:2012.03808): a
+        density is not reparametrization-invariant, so its ordering carries less
+        information than anomaly detection assumes.  Probability mass over a
+        region IS invariant, so scoring by mass removes the flaw rather than
+        working around it.
+
+        `log_ball(x, eps) - log_prob(x) - sum(log 2*eps)` -> 0 as eps -> 0, and
+        the rate at which it departs from 0 as eps grows is the local
+        dimensionality — sweep eps and the slope is an exact LID estimate.
+
+        PRECISION.  In float32 the identity above holds to ~3e-4 at eps=1e-3 and
+        degrades in BOTH directions: truncation error above it, cancellation in
+        log(Phi(hi) - Phi(lo)) below it, where the two CDFs differ by ~2*eps*phi.
+        Measured max error: 4.4e-1 / 4.7e-3 / 2.8e-4 / 1.8e-3 / 2.2e-2 / 5.3e-1
+        at eps = 1e-1 ... 1e-6 (`tests/test_mass.py`).  **Do not go below
+        eps ~ 1e-3 in float32** — the score degrades silently.
+
+        x:   (B, d)
+        eps: scalar, (d,) or (B, d) — half-width per dimension. Scale it per
+             feature (e.g. a fraction of the training std); the coordinates are
+             whitened but not identically scaled.
+        """
+        eps = torch.as_tensor(eps, dtype=x.dtype, device=x.device)
+        if eps.dim() == 0:
+            eps = eps.expand_as(x)
+        elif eps.dim() == 1:
+            eps = eps.unsqueeze(0).expand_as(x)
+        lo, hi = x - eps, x + eps
+        bm = torch.ones(x.shape, dtype=torch.bool, device=x.device)
+        return self._run(x, observed=None, boxes=(lo, hi, bm), chunk=chunk)
+
     def log_partition(self) -> torch.Tensor:
         """Exact log Z — 0 by construction; this computes it, it does not assume it."""
         dev = self.leaves.mus.device
