@@ -1,3 +1,127 @@
+# Status — 2026-08-21
+
+Two things landed today: the F1 validation that `hands_off.md` §5 ranked first,
+and two ablation rows that had actually finished on Aug 6 after the hand-off was
+written and sat unread for two weeks.
+
+## F1 does NOT generalise to the official SBI — it is our bug
+
+`scripts/official_sbi_symmetry.py`, `results/official_sbi_symmetry.json`.
+Checked against Shiohara & Yamasaki's released code
+(`github.com/mapooon/SelfBlendedImages`), by measurement, not by reading:
+
+| test | result |
+|---|---|
+| A — does `additional_targets` share sampled parameters? | **yes**, max diff 0 over 200 trials |
+| B — periphery diff after `dynamic_blend` | **0** (bit-identical) |
+| B — periphery diff after the shared transforms | 50, but see C |
+| C — that difference, beyond 8 px from the mask | **0**, zero pixels changed |
+
+The official recipe is periphery-symmetric by construction, in two places we
+diverged from:
+
+1. **The background.** `dynamic_blend` computes
+   `mask*source + (1-mask)*target`, and the array SBI returns as the *real* is
+   `target` itself. Both branches of its `p=0.5` coin perturb `img` **before**
+   blending and return that same perturbed `img` as the real, so real and fake
+   share a bit-identical background. Ours composites onto `tgt`, a separately
+   perturbed copy, while training compares against the raw `img`.
+2. **The compression.** Official SBI has no post-blend re-encode at all. Its
+   `alb.ImageCompression(40,100,p=0.5)` sits in the shared
+   `Compose(additional_targets={'image1':'image'})` and therefore hits fake and
+   real at the *same* quality. Ours applies `match_source_pipeline` (q88–96) to
+   the blend only.
+
+The residual 50 is ordinary JPEG block-locality at the blend boundary and dies
+within one 8×8 block; `periphery_blocks()` dilates by 24 px, so the audit
+discards it already. **The official pipeline would score the null, 0.500, in
+`shortcut_audit.py --tests T1`.**
+
+**Consequence: F1 is demoted from a field-wide leakage audit to a
+reproducibility note about our `self_blend`.** It is still true, still explains
+our own saturation, and is still worth a paragraph — but it is not a claim about
+SBI, FSBI, BlenD or anything else, and the paper must not present it as one.
+This was the cheap test that decided how big the result is, and it decided
+*small*.
+
+## The two ablation rows that were already on disk
+
+`queue_ablation2.sh` completed at 19:08 on Aug 6, minutes after the hand-off was
+written. Full table (`scripts/show_ablation.py`):
+
+| variant | val AUC | vs base | loss |
+|---|---|---|---|
+| sam | 0.8747 | +0.0030 | 0.0120 |
+| base | 0.8716 | — | 0.0155 |
+| hull | 0.8610 | −0.0106 | 0.0267 |
+| all | 0.8543 | −0.0173 | 0.0306 |
+| **all_clean** | **0.8333** | **−0.0384** | 0.0243 |
+| noleak | 0.8468 | −0.0249 | 0.0197 |
+| **noleak_clean** | **0.8081** | **−0.0636** | 0.0173 |
+
+Two corrections to Finding 3 follow.
+
+**(a) The convergence confound is largely dead.** Finding 3 says "val AUC falls
+monotonically with final training loss" and could not separate "harder
+pseudo-task transfers worse" from "less converged at 20 epochs". Across all
+seven variants that rank correlation drops from **ρ = −0.70 to ρ = −0.36**:
+`noleak_clean` has the third-lowest loss and the *worst* AUC, `hull` the
+second-highest loss and the third-best. Convergence does not explain the
+ordering. F3 gets stronger.
+
+**(b) `noleak_clean` is the largest drop in the ablation, and it is unexplained.**
+Removing the leak cleanly costs **6.4 AUC points on real forgeries** — but the
+leak is chance (0.477) on real forgeries, so deleting it should have cost
+nothing there. It is not a compression-exposure artefact either: `_augment`
+still applies JPEG q40–100 at p=0.3 to both classes regardless of
+`compress_policy`, so `noleak_clean` sees compression variation. **A reviewer
+will find this in five seconds; F1 cannot be written up until it has an
+answer.**
+
+Note what (b) does to the encoder story: `noleak_clean` is the variant closest
+to the official recipe on the periphery axis, and it is our *worst* result at
+0.8081 against published SBI's ~0.99. So the leak was never what separated us
+from published SBI — removing it makes us worse. **The encoder gap has a cause
+we have not identified yet.**
+
+## Where that points
+
+Reading the official code to run the F1 test also produced a list of concrete,
+still-unported deviations, which is the first new lead on the encoder gap since
+Finding 0:
+
+- **Blend alpha.** Official draws from `[0.25,0.5,0.75,1,1,1]` — full strength
+  half the time. Our `deform_mask` ends with `mask * rng.uniform(0.25,1.0)`,
+  which is full strength essentially never.
+- **Paired batches.** Official returns `(img_f, img_r)` for *every* item, so
+  each batch is exactly balanced and each fake sits next to its own source.
+  Ours flips a per-sample coin and returns one or the other.
+- **Colour augmentation.** Official's shared compose has RGBShift,
+  HueSaturationValue and RandomBrightnessContrast. Ours has hflip, JPEG and
+  downscale only.
+- **Elastic on the source.** Official's `randaffine` applies
+  `alb.ElasticTransform(alpha=50,sigma=7)` to the donor *image*; our
+  `_random_affine` warps the donor affinely and the elastic term is applied to
+  the *mask* instead.
+
+A faithful port is bounded work and is now a better-motivated experiment than
+`hires`, which remains untested but is a guess. Neither is a reason to reopen
+the detection-parity goal; both are reasons the paper can say *why* our
+reimplementation underperforms rather than leaving it as "weaker in ways not
+captured".
+
+## Also true as of today
+
+- `crops_hires` is worse than the hand-off recorded: 696 real train crop dirs
+  exist, but `manifests/ffpp_ingested_crops_hires.csv` has **8 rows**. The
+  manifest is unusable; train must be re-ingested, not just val.
+- Disk on the workstation is now **101 GB free**. `raw/ffpp_zip` (17 GB) is
+  still redundant.
+- Every result JSON is now committed under `results/` (29 files, 5.4 MB).
+  They previously existed only on the workstation.
+
+---
+
 # Status — 2026-08-06
 
 # WHY THIS IS NOT A STATE-OF-THE-ART DETECTOR — the investigation
