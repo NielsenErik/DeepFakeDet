@@ -211,9 +211,28 @@ class PCDetector:
             eye[p, p * self.C:(p + 1) * self.C] = True
         return eye, ~eye
 
+    def _auto_chunk_rows(self, budget_bytes: int = 1 << 30) -> int:
+        """
+        Rows per circuit pass that keep the leaf layer inside `budget_bytes`.
+
+        `region_log_marginals` expands (B samples, Q masks) into B*Q rows before
+        the leaf layer sees them, and the leaf layer materialises (rows, L, M)
+        with L = d * n_input_components.  With P = 64 patch masks and B = 64
+        that is 4096 rows, so a fixed chunk of 8192 never chunks at all and the
+        arm's memory use is quadratic in nothing anyone looks at until it OOMs:
+        d = 6080 (spectral) fits in 16 GB, d = 7104 (combined) does not, and the
+        failure lands in `calibrate` AFTER training has finished.
+
+        Scaling the chunk with d instead makes that a speed cost rather than a
+        crash.  Chunking is exact, so no result changes.
+        """
+        L, M = self.pc.leaves.mus.shape
+        per_row = L * M * 4 * 3          # ~3 live float32 intermediates
+        return int(max(64, min(8192, budget_bytes // max(per_row, 1))))
+
     @torch.no_grad()
     def patch_surprisal(self, Z: np.ndarray, batch: int = 64,
-                        chunk_rows: int = 8192) -> Dict[str, np.ndarray]:
+                        chunk_rows: Optional[int] = None) -> Dict[str, np.ndarray]:
         """
         Exact per-patch quantities for every sample.
 
@@ -222,6 +241,8 @@ class PCDetector:
             marg[n,p] = −log p(z_p)            (one exact pass)
         """
         dev = self.cfg.device
+        if chunk_rows is None:
+            chunk_rows = self._auto_chunk_rows()
         keep, drop = self._patch_masks(dev)
         conds, margs, logps = [], [], []
         for i in range(0, len(Z), batch):

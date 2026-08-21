@@ -76,7 +76,35 @@ mass-based score minus the density it is derived from.
 | clip | 1024 | 0.4757 | 0.4421 | 0.5243 | 1.4% | +0.0486 |
 | srm | 1024 | 0.4442 | 0.5850 | 0.5558 | 2.4% | +0.1408 |
 | spectral | 6080 | 0.4587 | 0.5882 | 0.5413 | 2.9% | +0.1296 |
+| combined | 7104 | 0.3172 | 0.6077 | 0.6828 | 5.5% | +0.3656 |
 | **sbi** | 1024 | **0.2116** | **0.7258** | **0.7884** | **36.9%** | **+0.5768** |
+
+**The relative dimension gap orders the LID score exactly**: 0.4421, 0.5850,
+0.5882, 0.6077, 0.7258 against gaps of 1.4%, 2.4%, 2.9%, 5.5%, 36.9% —
+Spearman ρ = 1.000 across five representations. Same shape as F2 (coverage
+predicts detectability, ρ = 1.000, n = 5), reached independently. Both are
+n = 5 and both need a second dataset before either is a law rather than a
+suggestion, but they are now two of them.
+
+### The combined arm shows the gap being DILUTED
+
+`combined` = sbi (16 ch) ⊕ spectral (95 ch), per-channel standardized on train
+only, built by `scripts/build_combined_features.py` (the config existed since
+Aug 4; `build_extractor` never had a branch for it, and it did not need one —
+the two arms are stored over the same crops in the same order, so the arm is a
+concatenation, not a re-extraction).
+
+It does **not** beat its better source: 0.6828 against sbi's 0.7884. And the
+reason is visible in the gap, which falls from 36.9% to 5.5%. 6,080 of the
+7,104 dimensions come from `spectral`, which has essentially no gap of its own,
+so the informative subspace is swamped by uninformative coordinates.
+
+That is **H1 dilution** — the first failure mode this project ever identified,
+back on Aug 4, where restricting the exact marginal to the top-k discriminative
+coordinates bought +0.093 — reappearing in a completely different quantity. The
+dimension gap dilutes exactly the way the likelihood did. Concatenating a
+representation that carries no signal costs you, and the cost is measurable in
+advance from real data alone.
 
 **The gain tracks the gap.** This is the control the method needs: mass is not a
 generic statistic that inflates AUC wherever it is applied. On CLIP features
