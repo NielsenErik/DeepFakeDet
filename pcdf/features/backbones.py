@@ -147,6 +147,59 @@ class SbiEncoderExtractor(PatchExtractor):
         return fmap.flatten(2).transpose(1, 2)           # (B, P, C)
 
 
+class OfficialSbiExtractor(PatchExtractor):
+    """
+    Patch grid from Shiohara & Yamasaki's RELEASED SBI weights.
+
+    Not interchangeable with `SbiEncoderExtractor`, in three ways that each
+    silently produce garbage rather than an error (all verified against
+    `src/inference/model.py` and `src/inference/inference_dataset.py` of
+    github.com/mapooon/SelfBlendedImages):
+
+      * `efficientnet_pytorch` (lukemelas), NOT timm.  The checkpoint's 706
+        tensors are named `net._conv_stem.weight`, `net._bn0.*`, `net._fc.*` and
+        share no names with timm's `tf_efficientnet_b4`; loading them there with
+        strict=False drops nearly everything and does not raise.
+      * head is 2-way (`_fc` is (2, 1792)), not 1-way.
+      * **input is raw [0,1]** — they feed `.float()/255` and nothing else, where
+        ours applies ImageNet mean/std.  `advprop=True` only chose the
+        initialization, before fine-tuning.
+
+    Why this exists: our own encoder loses 0.22 AUC crossing to Celeb-DF
+    (0.6901 vs 0.8921 for these weights, Finding 12), so every circuit result
+    measured on its features is measured on a representation that does not
+    transfer.  This lets the whole stack be rerun on one that does.
+    """
+
+    def __init__(self, checkpoint: str, grid: int = 8, input_size: int = 380):
+        super().__init__()
+        from efficientnet_pytorch import EfficientNet
+
+        # from_name, not from_pretrained: every weight is about to be replaced.
+        net = EfficientNet.from_name("efficientnet-b4", num_classes=2)
+        blob = torch.load(checkpoint, map_location="cpu", weights_only=False)
+        sd = blob["model"] if isinstance(blob, dict) and "model" in blob else blob
+        # the checkpoint stores the `Detector` wrapper, whose field is `net`
+        sd = {k[len("net."):]: v for k, v in sd.items() if k.startswith("net.")}
+        missing, unexpected = net.load_state_dict(sd, strict=False)
+        real_missing = [k for k in missing if "num_batches_tracked" not in k]
+        if real_missing or unexpected:
+            raise RuntimeError(
+                f"official SBI checkpoint does not match the architecture: "
+                f"{len(real_missing)} missing, {len(unexpected)} unexpected")
+        self.net = net.eval()
+        for q in self.net.parameters():
+            q.requires_grad_(False)
+        self.spec = FeatureSpec("official_sbi", grid, 1792, input_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.interpolate(x, size=(self.spec.input_size,) * 2, mode="bilinear",
+                          align_corners=False)
+        fmap = self.net.extract_features(x)          # NO normalization
+        fmap = F.adaptive_avg_pool2d(fmap, self.spec.grid)
+        return fmap.flatten(2).transpose(1, 2)       # (B, P, C)
+
+
 # ── hand-built local forensics (no learning at all) ────────────────────────
 
 _SRM_KERNELS = torch.tensor([
@@ -314,6 +367,8 @@ def build_extractor(name: str, device: str = "cuda", **kwargs) -> PatchExtractor
         ex = DinoV2PatchExtractor(**kwargs)
     elif name == "sbi":
         ex = SbiEncoderExtractor(**kwargs)
+    elif name == "official_sbi":
+        ex = OfficialSbiExtractor(**kwargs)
     elif name == "srm":
         ex = SrmPatchExtractor(**kwargs)
     elif name == "spectral":
