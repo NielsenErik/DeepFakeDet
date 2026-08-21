@@ -1,0 +1,47 @@
+{
+  "verdict": "STOP \u2014 the detector does not work in-dataset; fix the representation first",
+  "gates": [
+    [
+      "G1_detection",
+      "ffpp in-dataset video AUC",
+      "0.9000",
+      "0.6242",
+      "FAIL"
+    ],
+    [
+      "G2_generalization",
+      "cross-dataset AUC minus SBI",
+      "-0.0300",
+      "\u2014",
+      "\u2014"
+    ],
+    [
+      "G3_circuit_value_detection",
+      "AUC minus best baseline",
+      "0.0200",
+      "-0.0041",
+      "FAIL"
+    ],
+    [
+      "G3_circuit_value_localization",
+      "patch AUC minus best baseline",
+      "0.0300",
+      "-0.0436",
+      "FAIL"
+    ],
+    [
+      "G4_structure",
+      "val NLL gain over random structure (nats)",
+      "2.0000",
+      "\u2014",
+      "\u2014"
+    ],
+    [
+      "G5_scale",
+      "circuit fit seconds",
+      "3600.0000",
+      "\u2014",
+      "\u2014"
+    ]
+  ]
+}

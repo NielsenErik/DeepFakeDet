@@ -1,0 +1,33 @@
+{
+  "probes": {
+    "image_mean": {
+      "auc_frame": 0.709022330318187,
+      "auc_video": 0.722041664446694,
+      "n_features": 16
+    },
+    "image_flat": {
+      "auc_frame": 0.7454019547615346,
+      "auc_video": 0.7753103521764613,
+      "n_features": 1024
+    },
+    "patch_max": {
+      "auc_frame": 0.6728350621094623,
+      "auc_video": 0.6950823165858596,
+      "n_features": 16
+    },
+    "patch_mean": {
+      "auc_frame": 0.6914036217892698,
+      "auc_video": 0.6952101870104961,
+      "n_features": 16
+    }
+  },
+  "best": "image_flat",
+  "per_method": {
+    "Deepfakes": 0.9239170973413606,
+    "Face2Face": 0.7210826362619213,
+    "FaceShifter": 0.7712717779316959,
+    "FaceSwap": 0.8729287655176088,
+    "NeuralTextures": 0.5873514838297192
+  },
+  "interpretation": "WEAK REPRESENTATION: some signal survives but not much; the one-class gap to the probe is the interesting quantity."
+}

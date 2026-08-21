@@ -1,0 +1,65 @@
+[
+  {
+    "grid": 4,
+    "channels": 8,
+    "d": 128,
+    "K": 4,
+    "structure_sec": 0.3128831386566162,
+    "einsum_sec_per_step": 0.0034103870391845705,
+    "reference_sec_per_step": 0.15185817082722983,
+    "speedup": 44.52813392803046,
+    "size": {
+      "features": 128,
+      "leaf_units": 512,
+      "sum_units": 505,
+      "product_units": 2032,
+      "parameters": 14224,
+      "levels": 9,
+      "einsum_groups": 9,
+      "structured_decomposable": 1
+    },
+    "log_partition": -1.788142469649756e-07
+  },
+  {
+    "grid": 8,
+    "channels": 16,
+    "d": 1024,
+    "K": 8,
+    "structure_sec": 0.0871429443359375,
+    "einsum_sec_per_step": 0.013593530654907227,
+    "reference_sec_per_step": null,
+    "speedup": null,
+    "size": {
+      "features": 1024,
+      "leaf_units": 8192,
+      "sum_units": 8177,
+      "product_units": 65472,
+      "parameters": 621632,
+      "levels": 13,
+      "einsum_groups": 13,
+      "structured_decomposable": 1
+    },
+    "log_partition": -5.841258825967088e-06
+  },
+  {
+    "grid": 16,
+    "channels": 16,
+    "d": 4096,
+    "K": 8,
+    "structure_sec": 0.03209805488586426,
+    "einsum_sec_per_step": 0.04239649772644043,
+    "reference_sec_per_step": null,
+    "speedup": null,
+    "size": {
+      "features": 4096,
+      "leaf_units": 32768,
+      "sum_units": 32753,
+      "product_units": 262080,
+      "parameters": 2489408,
+      "levels": 14,
+      "einsum_groups": 14,
+      "structured_decomposable": 1
+    },
+    "log_partition": -2.3245826014317572e-05
+  }
+]

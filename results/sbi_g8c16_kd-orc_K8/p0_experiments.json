@@ -1,0 +1,260 @@
+{
+  "tag": "sbi_g8c16_kd-orc_K8",
+  "config": "configs/ffpp_sbi.yaml",
+  "p0_1_localization": {
+    "models": {
+      "PC_ratio_conditional": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.7365635112166184,
+        "patch_auc_per_image": 0.7309396309007922,
+        "iou_best_mean": 0.31780220491740657,
+        "pointing_accuracy": 0.3127962085308057,
+        "manipulated_patch_fraction": 0.15610189573459715
+      },
+      "mahalanobis": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.5404206403969213,
+        "patch_auc_per_image": 0.514479772764818,
+        "iou_best_mean": 0.18406958502308363,
+        "pointing_accuracy": 0.08135860979462875,
+        "manipulated_patch_fraction": 0.15610189573459715
+      },
+      "gmm": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.5424145844568046,
+        "patch_auc_per_image": 0.5305470058753915,
+        "iou_best_mean": 0.18433173309474038,
+        "pointing_accuracy": 0.20458135860979462,
+        "manipulated_patch_fraction": 0.15610189573459715
+      },
+      "patchcore": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.6711015005755281,
+        "patch_auc_per_image": 0.6721462198948382,
+        "iou_best_mean": 0.2884569453889485,
+        "pointing_accuracy": 0.4391785150078989,
+        "manipulated_patch_fraction": 0.15610189573459715
+      },
+      "flow": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.5113216276048345,
+        "patch_auc_per_image": 0.5066421446322409,
+        "iou_best_mean": 0.16603029081465462,
+        "pointing_accuracy": 0.14218009478672985,
+        "manipulated_patch_fraction": 0.15610189573459715
+      }
+    },
+    "per_method_PC_ratio": {
+      "Deepfakes": {
+        "n_images": 284,
+        "patch_auc_pooled": 0.8413026164941478,
+        "patch_auc_per_image": 0.8556240683804892,
+        "iou_best_mean": 0.5192139946224502,
+        "pointing_accuracy": 0.5880281690140845,
+        "manipulated_patch_fraction": 0.21775968309859156
+      },
+      "Face2Face": {
+        "n_images": 168,
+        "patch_auc_pooled": 0.722281972422508,
+        "patch_auc_per_image": 0.6995714415324554,
+        "iou_best_mean": 0.18685500905665822,
+        "pointing_accuracy": 0.125,
+        "manipulated_patch_fraction": 0.0900297619047619
+      },
+      "FaceShifter": {
+        "n_images": 307,
+        "patch_auc_pooled": 0.7218299146330751,
+        "patch_auc_per_image": 0.7359075935597252,
+        "iou_best_mean": 0.2993009362644902,
+        "pointing_accuracy": 0.2247557003257329,
+        "manipulated_patch_fraction": 0.15441775244299674
+      },
+      "FaceSwap": {
+        "n_images": 309,
+        "patch_auc_pooled": 0.6922911723234271,
+        "patch_auc_per_image": 0.6773676903986793,
+        "iou_best_mean": 0.3458395672958201,
+        "pointing_accuracy": 0.42718446601941745,
+        "manipulated_patch_fraction": 0.19862459546925568
+      },
+      "NeuralTextures": {
+        "n_images": 198,
+        "patch_auc_pooled": 0.6389456894418719,
+        "patch_auc_per_image": 0.6546166038730501,
+        "iou_best_mean": 0.12494627122997652,
+        "pointing_accuracy": 0.03535353535353535,
+        "manipulated_patch_fraction": 0.05997474747474747
+      }
+    }
+  },
+  "p0_2_occlusion": [
+    {
+      "hidden_fraction": 0.0,
+      "PC_ratio_exact_marginal": 0.8297170326668852,
+      "gmm_ratio_imputed": 0.8317819294220474,
+      "mahalanobis_ratio_imputed": 0.8158527258822243
+    },
+    {
+      "hidden_fraction": 0.125,
+      "PC_ratio_exact_marginal": 0.8291926144433519,
+      "gmm_ratio_imputed": 0.8315087949306239,
+      "mahalanobis_ratio_imputed": 0.8147164863979023
+    },
+    {
+      "hidden_fraction": 0.25,
+      "PC_ratio_exact_marginal": 0.8294548235551186,
+      "gmm_ratio_imputed": 0.8307330929749809,
+      "mahalanobis_ratio_imputed": 0.8128482464765652
+    },
+    {
+      "hidden_fraction": 0.375,
+      "PC_ratio_exact_marginal": 0.830339779307331,
+      "gmm_ratio_imputed": 0.8315524964492516,
+      "mahalanobis_ratio_imputed": 0.8149131432317274
+    },
+    {
+      "hidden_fraction": 0.5,
+      "PC_ratio_exact_marginal": 0.8287228231181034,
+      "gmm_ratio_imputed": 0.8300775701955643,
+      "mahalanobis_ratio_imputed": 0.8226920135474707
+    }
+  ],
+  "p0_3_region_information": {
+    "per_patch_nats": [
+      34.11438751220703,
+      93.67794036865234,
+      79.41938781738281,
+      75.77698516845703,
+      85.43639373779297,
+      78.7250747680664,
+      68.57862854003906,
+      11.752738952636719,
+      65.7059097290039,
+      82.25069427490234,
+      71.47468566894531,
+      81.37155151367188,
+      83.72016906738281,
+      73.35759735107422,
+      63.86116409301758,
+      55.647796630859375,
+      58.17180252075195,
+      59.74528884887695,
+      92.68199920654297,
+      123.05230712890625,
+      114.19906616210938,
+      105.04659271240234,
+      54.79074478149414,
+      54.384605407714844,
+      55.00396728515625,
+      60.13687515258789,
+      85.49816131591797,
+      115.02884674072266,
+      134.812255859375,
+      105.50077056884766,
+      51.75393295288086,
+      45.50292205810547,
+      74.34278869628906,
+      62.177669525146484,
+      112.72162628173828,
+      139.53659057617188,
+      158.61891174316406,
+      139.82470703125,
+      56.44948959350586,
+      57.57726287841797,
+      65.41249084472656,
+      68.50170135498047,
+      91.23369598388672,
+      113.84183502197266,
+      106.41958618164062,
+      102.4365234375,
+      67.75837707519531,
+      67.56610870361328,
+      41.94845962524414,
+      53.519012451171875,
+      94.40516662597656,
+      110.62012481689453,
+      110.91729736328125,
+      87.96749877929688,
+      57.21748733520508,
+      57.8243408203125,
+      15.735255241394043,
+      28.252704620361328,
+      79.95220184326172,
+      113.79154205322266,
+      101.4266586303711,
+      59.2198486328125,
+      36.51034164428711,
+      17.875194549560547
+    ],
+    "grid": 8,
+    "top_regions": [
+      {
+        "patch": 36,
+        "row": 4,
+        "col": 4,
+        "nats": 158.61891174316406
+      },
+      {
+        "patch": 37,
+        "row": 4,
+        "col": 5,
+        "nats": 139.82470703125
+      },
+      {
+        "patch": 35,
+        "row": 4,
+        "col": 3,
+        "nats": 139.53659057617188
+      },
+      {
+        "patch": 28,
+        "row": 3,
+        "col": 4,
+        "nats": 134.812255859375
+      },
+      {
+        "patch": 19,
+        "row": 2,
+        "col": 3,
+        "nats": 123.05230712890625
+      },
+      {
+        "patch": 27,
+        "row": 3,
+        "col": 3,
+        "nats": 115.02884674072266
+      },
+      {
+        "patch": 20,
+        "row": 2,
+        "col": 4,
+        "nats": 114.19906616210938
+      },
+      {
+        "patch": 43,
+        "row": 5,
+        "col": 3,
+        "nats": 113.84183502197266
+      }
+    ],
+    "bottom_regions": [
+      {
+        "patch": 57,
+        "nats": 28.252704620361328
+      },
+      {
+        "patch": 63,
+        "nats": 17.875194549560547
+      },
+      {
+        "patch": 56,
+        "nats": 15.735255241394043
+      },
+      {
+        "patch": 7,
+        "nats": 11.752738952636719
+      }
+    ],
+    "note": "exact marginals per region; expectation estimated on held-out real frames. Higher = the two processes disagree more there."
+  }
+}

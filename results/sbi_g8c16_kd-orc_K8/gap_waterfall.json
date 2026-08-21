@@ -1,0 +1,45 @@
+{
+  "tag": "sbi_g8c16_kd-orc_K8",
+  "encoder": {
+    "auc_video": 0.8311684160051148,
+    "auc_frame": 0.7960686082049214,
+    "checkpoint": "/home/jawa17/deepfake_data/models/sbi_effnetb4.pt",
+    "best_val_auc_video": 0.8721729125575279,
+    "per_method": {
+      "Deepfakes": 0.8750599392615483,
+      "Face2Face": 0.9185358836379135,
+      "FaceShifter": 0.7786243273482871,
+      "FaceSwap": 0.8309446427620012,
+      "NeuralTextures": 0.7526772870158239
+    }
+  },
+  "waterfall": [
+    {
+      "stage": "published SBI (reported)",
+      "auc_video": 0.9964,
+      "lost_vs_previous": null
+    },
+    {
+      "stage": "our encoder, end to end",
+      "auc_video": 0.8311684160051148,
+      "lost_vs_previous": 0.16523158399488513
+    },
+    {
+      "stage": "linear probe on projected features (image_flat)",
+      "auc_video": 0.8591400713943205,
+      "lost_vs_previous": -0.027971655389205652
+    },
+    {
+      "stage": "circuit, one-class NLL",
+      "auc_video": 0.8124780222707657,
+      "lost_vs_previous": 0.04666204912355476
+    },
+    {
+      "stage": "circuit, exact log-ratio",
+      "auc_video": 0.8282725461318549,
+      "lost_vs_previous": -0.01579452386108915
+    }
+  ],
+  "total_gap": 0.1681274538681451,
+  "encoder_share": 0.9827757465741969
+}

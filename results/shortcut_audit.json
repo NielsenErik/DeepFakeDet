@@ -1,0 +1,65 @@
+{
+  "T1_leakage": {
+    "note": "AUC over periphery blocks only \u2014 pixels the blend never touched. Chance = 0.5; anything above it is a cue the network can use without looking at the forgery.",
+    "current": {
+      "auc": 0.9371480000000001,
+      "n": 1998,
+      "n_test": 1000
+    },
+    "no_reencode": {
+      "auc": 0.8116839999999999,
+      "n": 1998,
+      "n_test": 1000
+    },
+    "pristine_bg": {
+      "auc": 0.9165279999999999,
+      "n": 1998,
+      "n_test": 1000
+    },
+    "pristine_bg_no_reencode": {
+      "auc": 0.5,
+      "n": 1998,
+      "n_test": 1000
+    },
+    "pristine_bg_symmetric": {
+      "auc": 0.500174,
+      "n": 1998,
+      "n_test": 1000
+    }
+  },
+  "T3_transfer": {
+    "per_method": {
+      "NeuralTextures": {
+        "auc": 0.5121591371591372,
+        "n": 930,
+        "n_test": 489
+      },
+      "FaceShifter": {
+        "auc": 0.5283523665876607,
+        "n": 954,
+        "n_test": 477
+      },
+      "Deepfakes": {
+        "auc": 0.4906099191813477,
+        "n": 927,
+        "n_test": 462
+      },
+      "Face2Face": {
+        "auc": 0.4804576866432536,
+        "n": 937,
+        "n_test": 467
+      },
+      "FaceSwap": {
+        "auc": 0.4744822485207101,
+        "n": 954,
+        "n_test": 481
+      }
+    },
+    "pooled": {
+      "auc": 0.4771651032778629,
+      "n": 2534,
+      "n_test": 1284
+    },
+    "note": "Same periphery/compression features, real FF++ forgeries vs real faces. Near 0.5 means the cue the pseudo-task offers does not exist in the forgeries we must actually detect."
+  }
+}
