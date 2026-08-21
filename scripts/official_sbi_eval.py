@@ -97,6 +97,43 @@ def load_official(checkpoint: Path, device: str) -> OfficialSbiDetector:
     return model.eval().to(device)
 
 
+def index_from_crops(root: Path, dataset: str, crops_dirname: str) -> dict:
+    """
+    Build a path/label/method/video index straight from an ingested manifest.
+
+    Checking a published cross-dataset number does not need features, a
+    projector or a circuit — only crops and labels — and requiring the feature
+    pipeline first would put three more stages between us and the answer.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from pcdf.data.manifest import read_manifest
+
+    man = root / "manifests" / f"{dataset}_ingested.csv"
+    if not man.exists():
+        raise SystemExit(
+            f"[official] {man} not found — run\n"
+            f"    pcdf -c <config> manifest --datasets {dataset}\n"
+            f"    pcdf -c <config> ingest --dataset {dataset}")
+    cols = {k: [] for k in ("path", "label", "method", "video")}
+    n_missing = 0
+    for r in read_manifest(man):
+        d = root / crops_dirname / r.dataset / r.method / Path(r.video).stem
+        if not d.exists():
+            n_missing += 1
+            continue
+        stem = Path(r.video).stem
+        for q in sorted(d.glob("[0-9]*.jpg")):
+            cols["path"].append(str(q))
+            cols["label"].append(r.label)
+            cols["method"].append(r.method)
+            cols["video"].append(f"{r.method}/{stem}")
+    if n_missing:
+        print(f"[official] {n_missing} manifest rows had no crop directory")
+    if not cols["path"]:
+        raise SystemExit(f"[official] no crops found under {root / crops_dirname / dataset}")
+    return {k: np.array(v) for k, v in cols.items()}
+
+
 _LMK_CACHE: dict = {}
 
 
@@ -155,6 +192,43 @@ def official_recrop(img: np.ndarray, lmk: np.ndarray) -> np.ndarray:
     return img[ya:yb, xa:xb]
 
 
+class OurEncoderWrapper(nn.Module):
+    """Our timm EfficientNet-B4 behind the same (B,3,H,W) in [0,1] interface.
+
+    Ours was trained with ImageNet normalization (`SbiFrameDataset`) and has a
+    single logit; theirs takes raw [0,1] and has two. The normalization is
+    applied here so `score_crops` stays identical for both, and the single
+    logit is mapped to the same "probability of fake" the official softmax
+    gives.
+    """
+
+    def __init__(self, net):
+        super().__init__()
+        self.net = net
+        self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        p = torch.sigmoid(self.net((x - self.mean) / self.std).squeeze(1))
+        return torch.stack([1 - p, p], dim=1)     # match softmax(1)[:,1]
+
+
+def load_ours(cfg, checkpoint=None) -> nn.Module:
+    import timm
+
+    from pcdf.models.supervised import SbiConfig
+
+    ck = Path(checkpoint or cfg["features"]["backbone_kwargs"]["checkpoint"])
+    blob = torch.load(ck, map_location="cpu", weights_only=False)
+    scfg = SbiConfig(**{k: v for k, v in blob.get("cfg", {}).items()
+                        if k in SbiConfig.__dataclass_fields__})
+    net = timm.create_model(scfg.arch, pretrained=False, num_classes=1)
+    net.load_state_dict(blob["model"])
+    print(f"[ours] loaded {ck.name} (val AUC "
+          f"{blob.get('best_val_auc_video', float('nan')):.4f})")
+    return OurEncoderWrapper(net).eval().to(cfg["device"])
+
+
 @torch.no_grad()
 def score_crops(model: nn.Module, paths, device: str, batch: int = 64,
                 crop_rule: str = "stored") -> np.ndarray:
@@ -194,11 +268,26 @@ def main() -> None:
                     help="default: <root>/models/official_sbi/FFc23.tar")
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--dataset", default="ffpp",
+                    help="ffpp reads the feature index (identical crops to the "
+                         "probe and circuit); any other dataset is read "
+                         "straight from its ingested manifest + crop dirs, so "
+                         "no feature extraction is needed to check a published "
+                         "cross-dataset number.")
+    ap.add_argument("--crops-dir", default="crops")
+    ap.add_argument("--our-encoder", action="store_true",
+                    help="score with OUR checkpoint instead of the official "
+                         "one. Different architecture (timm) AND different "
+                         "input normalization (ImageNet mean/std, where theirs "
+                         "is raw [0,1]) — the two are not interchangeable.")
     ap.add_argument("--crop-rule", choices=["stored", "official", "both"],
                     default="both",
                     help="stored: our square margin-1.3 crop as saved. "
                          "official: their bbox+w/8,h/8 non-square crop, "
                          "stretched to 380 — re-derived inside the stored crop.")
+    ap.add_argument("--target", type=float, default=None,
+                    help="published number to check against, e.g. 0.9287 for "
+                         "Celeb-DF-v2 with the FF-c23 weights (repo table)")
     ap.add_argument("--ours", type=float, default=0.8312,
                     help="our encoder's measured FF++ video AUC (gap_waterfall)")
     ap.add_argument("--published", type=float, default=0.9964,
@@ -217,20 +306,26 @@ def main() -> None:
         raise SystemExit(f"[official] no checkpoint at {ckpt}; see the docstring "
                          f"for the gdown commands")
 
-    # the SAME index the probe and the circuit see, so this is a difference in
-    # encoder and nothing else
-    index = json.loads((_feat_dir(cfg) / "ffpp_test_index.json").read_text())
-    index = {k: np.array(v) for k, v in index.items()}
+    if a.dataset == "ffpp":
+        # the SAME index the probe and the circuit see, so this is a difference
+        # in encoder and nothing else
+        index = json.loads((_feat_dir(cfg) / "ffpp_test_index.json").read_text())
+        index = {k: np.array(v) for k, v in index.items()}
+    else:
+        index = index_from_crops(root, a.dataset, a.crops_dir)
     if a.limit:
         rs = np.random.default_rng(0)
         sel = np.sort(rs.permutation(len(index["path"]))[:a.limit])
         index = {k: v[sel] for k, v in index.items()}
     y = index["label"].astype(int)
-    vkey = video_keys(index)
+    vkey = video_keys(index) if a.dataset == "ffpp" else index["video"]
     print(f"[official] {len(y)} crops, {len(set(vkey.tolist()))} videos, "
           f"{int((y == 1).sum())} forged", flush=True)
 
-    model = load_official(ckpt, cfg["device"])
+    if a.our_encoder:
+        model = load_ours(cfg, a.checkpoint)
+    else:
+        model = load_official(ckpt, cfg["device"])
     rules = ["stored", "official"] if a.crop_rule == "both" else [a.crop_rule]
     scores = {r: score_crops(model, index["path"], cfg["device"], a.batch, r)
               for r in rules}
@@ -254,7 +349,8 @@ def main() -> None:
             (r["auc_video_mean"] - a.ours) / (a.published - a.ours)
         return r
 
-    res = {"checkpoint": str(ckpt), "n_crops": int(len(y)),
+    res = {"checkpoint": ("ours" if a.our_encoder else str(ckpt)),
+           "dataset": a.dataset, "n_crops": int(len(y)),
            "ours_same_crops": a.ours, "published_reported": a.published,
            "by_crop_rule": {r: evaluate(sc) for r, sc in scores.items()}}
 
@@ -278,6 +374,23 @@ def main() -> None:
                       for r in res["by_crop_rule"])
         print(f"{m:<16}{row}")
 
+    if a.target is not None:
+        res["target"] = a.target
+        got = max(v["auc_video_mean"] for v in res["by_crop_rule"].values())
+        res["vs_target"] = got - a.target
+        print(f"\npublished target      {a.target:.4f}")
+        print(f"ours (best crop rule) {got:.4f}   ({got - a.target:+.4f})")
+        if abs(got - a.target) <= 0.02:
+            print("  VERDICT: reproduces the published number. The pipeline is "
+                  "correct end to end -- crops, model, protocol.")
+        elif got < a.target - 0.02:
+            print("  VERDICT: does NOT reproduce. The defect is in our pipeline "
+                  "and is now bounded by a published reference instead of "
+                  "guessed at.")
+        else:
+            print("  VERDICT: above the published number -- check the test list "
+                  "and the aggregation before believing it.")
+
     best = max(res["by_crop_rule"], key=lambda r: res["by_crop_rule"][r]["auc_video_mean"])
     v = res["by_crop_rule"][best]["auc_video_mean"]
     if "official" in res["by_crop_rule"] and "stored" in res["by_crop_rule"]:
@@ -300,7 +413,8 @@ def main() -> None:
                   "detector or the published protocol; run their full inference "
                   "pipeline on our videos to separate those.")
 
-    dest = root / "results" / "official_sbi_eval.json"
+    who = "ours" if a.our_encoder else "official"
+    dest = root / "results" / f"sbi_eval_{who}_{a.dataset}.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(res, indent=2, default=float))
     print(f"[official] wrote {dest}")

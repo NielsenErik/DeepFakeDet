@@ -1,35 +1,29 @@
 {
   "checkpoint": "/home/jawa17/deepfake_data/models/official_sbi/FFc23.tar",
-  "n_crops": 3000,
+  "n_crops": 16059,
   "ours_same_crops": 0.8312,
   "published_reported": 0.9964,
   "by_crop_rule": {
     "stored": {
-      "auc_frame": 0.841523816662892,
-      "auc_video_mean": 0.8495791718101223,
-      "auc_video_max": 0.8440242397037369,
+      "auc_frame": 0.8243590815451777,
+      "auc_video_mean": 0.8920720630635135,
+      "auc_video_max": 0.8775394563605153,
       "per_method": {
-        "Deepfakes": 0.9701492537313432,
-        "Face2Face": 0.8634833352036807,
-        "FaceShifter": 0.7732710493334852,
-        "FaceSwap": 0.8679721692290426,
-        "NeuralTextures": 0.7715526843394966
+        "Celeb-synthesis": 0.8920720630635135
       },
-      "recovered_fraction_of_gap": 0.11125406664722932
+      "recovered_fraction_of_gap": 0.3684749580115828
     },
     "official": {
-      "auc_frame": 0.848283407602576,
-      "auc_video_mean": 0.8554258781281562,
-      "auc_video_max": 0.8454831107619797,
+      "auc_frame": 0.8394638105772968,
+      "auc_video_mean": 0.9076712831025117,
+      "auc_video_max": 0.8870556472176392,
       "per_method": {
-        "Deepfakes": 0.9734907551793271,
-        "Face2Face": 0.8678599483784086,
-        "FaceShifter": 0.7799361968782044,
-        "FaceSwap": 0.8843564134216138,
-        "NeuralTextures": 0.7701047003787035
+        "Celeb-synthesis": 0.9076712831025117
       },
-      "recovered_fraction_of_gap": 0.14664575138109046
+      "recovered_fraction_of_gap": 0.46290122943408996
     }
   },
-  "crop_rule_delta": 0.005846706318033856
+  "target": 0.9287,
+  "vs_target": -0.02102871689748831,
+  "crop_rule_delta": 0.015599220038998163
 }

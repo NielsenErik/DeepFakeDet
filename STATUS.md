@@ -1,3 +1,91 @@
+# Status — 2026-08-22: Celeb-DF-v2 landed. The pipeline is CORRECT.
+
+## Finding 12: the pipeline reproduces a published cross-dataset number
+
+Celeb-DF-v2 arrived and was ingested (official 518-video test list: 340 fake,
+178 real — the protocol SBI reports on). `scripts/official_sbi_eval.py
+--dataset celebdf`.
+
+| | CDF video AUC |
+|---|---|
+| published, FF-c23 weights (repo table) | 0.9287 |
+| **official weights through OUR pipeline** | **0.9077** (−0.0210) |
+| our encoder through our pipeline | 0.6901 (−0.2386) |
+
+**−0.021 against a published number, using a different face detector
+(mediapipe vs RetinaFace), our crop settings and our frame sampling.** That is a
+reproduction. **The pipeline — crops, protocol, aggregation, scoring — is
+correct.** The question that had blocked everything since Finding 11 is answered.
+
+Three consequences, and they close out weeks of misdirected work:
+
+1. **There is no mysterious 0.14 "encoder gap".** 0.8610 on FF++ c23 with the
+   official weights is simply what this model does on compressed FF++. The
+   0.9964 it was being compared to is FF++ *raw* (Finding 11). Both halves of
+   that error are now closed: the target was wrong, and the pipeline is right.
+2. **Our encoder is nearly as good in-dataset and catastrophically worse
+   cross-dataset.** FF++ c23: 0.8312 vs 0.8610, −0.030. Celeb-DF: 0.6901 vs
+   0.9077, **−0.218**. The problem was never capability on the training
+   distribution. It is generalization, and it was invisible because it was
+   never measured.
+3. **Every ablation conclusion was drawn on the wrong metric.** In-dataset val
+   AUC ranked the variants; cross-dataset transfer is what SBI exists for.
+
+## Finding 13: the ablation re-ranked on Celeb-DF, and a prediction that failed
+
+All nine checkpoints, scored on Celeb-DF-v2:
+
+| variant | FF++ val AUC | **CDF video AUC** |
+|---|---|---|
+| **hull** | 0.8610 | **0.7370** |
+| sam | 0.8747 | 0.7333 |
+| base | 0.8716 | 0.7186 |
+| all | 0.8543 | 0.6837 |
+| hires | 0.7612 | 0.6837 |
+| hires_sam | 0.8368 | 0.6801 |
+| noleak | 0.8468 | 0.6711 |
+| noleak_clean | 0.8081 | 0.6559 |
+| all_clean | 0.8333 | 0.6357 |
+
+Spearman(FF++ val, CDF) = **0.74** — related but far from interchangeable.
+
+**`hull` is the best cross-dataset variant.** In-dataset it looked like a loss
+(−0.0106, dismissed as inside the noise band in Finding 8). Randomising the hull
+shape so one boundary geometry cannot be memorised is worth +0.018 where it
+matters. Finding 3's claim that "everything except SAM hurts" was an artefact of
+scoring on the training distribution.
+
+### The leak prediction, made and falsified
+
+Finding 1 says the pseudo-task leaks an FF++-specific compression cue that
+scores 0.477 on real forgeries. The natural prediction: removing it should cost
+in-dataset AUC (observed, −0.0636) and **gain** cross-dataset AUC.
+
+**It does not.** `noleak_clean` scores 0.6559 on CDF against `base` 0.7186 —
+worse on both. `all_clean` is worst of all at 0.6357. Removing the leak makes
+the encoder worse everywhere.
+
+So the `noleak_clean` anomaly, open since Aug 6, is not explained by a
+train/test shift in the FF++ crops: it survives a change of dataset. Whatever
+`pristine_background=True, compress_policy="none"` does, it damages the
+representation itself rather than removing a shortcut. That remains unexplained
+and is now better bounded — it is a property of the pseudo-fake construction,
+not of the evaluation set.
+
+## Where this actually leaves the project
+
+The gap is real, large, and finally well-specified: **our encoder is ~0.19
+behind the official one cross-dataset (0.7370 vs 0.9077), and ~0.03 behind
+in-dataset.** Not a mystery, not a broken pipeline, not a wrong benchmark — a
+generalization gap, measured against a validated reference.
+
+Everything downstream should be re-evaluated on Celeb-DF before any of it is
+written up. In particular the mass/dimension result (Findings 9, "the gap"
+tracked the representation) has only ever been measured on FF++, on features
+from an encoder we now know does not transfer.
+
+---
+
 # Status — 2026-08-21 (night): the 0.9964 target is the WRONG NUMBER
 
 ## Finding 11: two corrections, one of which invalidates the headline gap

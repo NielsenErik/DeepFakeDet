@@ -1,0 +1,18 @@
+{
+  "checkpoint": "ours",
+  "dataset": "celebdf",
+  "n_crops": 16059,
+  "ours_same_crops": 0.8312,
+  "published_reported": 0.9964,
+  "by_crop_rule": {
+    "stored": {
+      "auc_frame": 0.6777519941848298,
+      "auc_video_mean": 0.7185640717964102,
+      "auc_video_max": 0.7045897705114744,
+      "per_method": {
+        "Celeb-synthesis": 0.7185640717964102
+      },
+      "recovered_fraction_of_gap": -0.6818155460265731
+    }
+  }
+}
