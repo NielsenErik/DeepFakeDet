@@ -1,0 +1,17 @@
+{
+  "checkpoint": "/home/jawa17/deepfake_data/models/official_sbi/FFc23.tar",
+  "n_crops": 25430,
+  "auc_frame": 0.8337700612212514,
+  "auc_video_mean": 0.8610048484202674,
+  "auc_video_max": 0.8285790399062284,
+  "per_method": {
+    "Deepfakes": 0.9695774948052641,
+    "Face2Face": 0.8727689274868135,
+    "FaceShifter": 0.785071127923704,
+    "FaceSwap": 0.9058553998614737,
+    "NeuralTextures": 0.7717512920240823
+  },
+  "ours_same_crops": 0.8312,
+  "published_reported": 0.9964,
+  "recovered_fraction_of_gap": 0.18041675799193302
+}

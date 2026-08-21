@@ -1,3 +1,95 @@
+# Status — 2026-08-21 (evening): the encoder gap is PREPROCESSING, not weights
+
+## Finding 10: the official SBI weights score 0.8610 on our crops
+
+`scripts/official_sbi_eval.py`, `results/official_sbi_eval.json`. Full FF++
+test set, 25,430 crops — the same index the probe and the circuit see, so this
+is a difference in encoder and nothing else.
+
+Shiohara & Yamasaki released their trained weights, including one trained on
+FF++ c23. The encoder never had to be reproduced; it could be downloaded. All
+706 tensors load with **0 unmatched** (epoch 99).
+
+| | FF++ video AUC |
+|---|---|
+| our encoder, our crops | 0.8312 |
+| **official SBI weights, our crops** | **0.8610** |
+| official SBI, reported | 0.9964 |
+
+**Their published encoder recovers 18% of the gap on our crops, and +0.0298 over
+our own — barely above the ±0.02 noise floor measured in Finding 8.**
+
+This overturns the label on four months of work. `gap_waterfall.json` was right
+that 98% of the distance is upstream of the circuit, but "the encoder" was the
+wrong name for it. With architecture and weights now held fixed at the published
+ones, 82% of the gap is still there. **It is not in the encoder. It is in what
+we feed it.**
+
+It also explains Findings 0, 3 and 8 at a stroke: longer training, SAM, hull
+variety, leak removal and native-380 crops all failed because **not one of them
+touched the crop geometry**. `hires` changed resolution while keeping mediapipe
+and margin 1.3, which is why it moved nothing (and, being a different
+distribution again, moved it downward).
+
+### The two pipelines, precisely
+
+| | ours (`crop_box`, faces.py:120) | theirs (`crop_face`, crop_by_bbox=True, phase='test') |
+|---|---|---|
+| detector | mediapipe (bbox derived from dense landmarks) | RetinaFace / dlib 81-landmark |
+| extent | **square**, side = max(w,h) × 1.3 | w×1.25 by h×1.25 — bbox + w/8 and h/8 per side |
+| aspect | preserved (square crop, square resize) | **not preserved** — a non-square crop is resized to 380×380 |
+
+Two consequences, and the second is probably the larger:
+
+1. **Field of view.** A face bbox is taller than wide, so `max(w,h) × 1.3` takes
+   about 1.3·h in *both* directions where theirs takes 1.25·w horizontally. Ours
+   is markedly wider and includes much more background.
+2. **Aspect distortion.** Their crops are deliberately stretched to square. The
+   encoder was trained on stretched faces; we hand it unstretched ones. That is
+   a systematic geometric domain shift on *every single image*, which is exactly
+   the kind of thing that costs a lot and shows up nowhere in a loss curve.
+
+The docstring on `crop_box` says 1.3 "follows the SBI / DeepfakeBench
+convention". Against their released code, it does not follow SBI's.
+
+### Per-method, and why it is not just a constant offset
+
+| method | ours | official weights, our crops |
+|---|---|---|
+| Deepfakes | 0.921 | **0.9696** |
+| FaceSwap | 0.699 | **0.9059** |
+| Face2Face | 0.872 | 0.8728 |
+| FaceShifter | 0.844 | 0.7851 |
+| NeuralTextures | 0.808 | 0.7718 |
+
+Their encoder is much better on Deepfakes and dramatically better on FaceSwap
+(+0.21), and *worse* on FaceShifter and NeuralTextures. So the two encoders are
+not ranked versions of each other — they have learned different things, and our
+crop pipeline is not merely a weaker version of theirs.
+
+### The decisive next test, and an honest alternative hypothesis
+
+The remaining 82% is attributed above to preprocessing, but a second
+explanation has not been excluded: **their 0.9964 is measured on their own
+protocol** — their detector, their frame sampling, their video list — and our
+test crops are a different sample of the same videos.
+
+One experiment separates these, and it is bounded: run **their** inference code
+(`src/inference/inference_dataset.py`, RetinaFace + their `crop_face`) on **our**
+FF++ c23 videos.
+
+* ≈0.99 → the entire remaining gap is preprocessing. Port `crop_face` and the
+  detector, re-ingest, and the detection problem is solved by preprocessing.
+  Every downstream result then gets rerun on a competitive backbone.
+* ≈0.86 → their published number does not reproduce on our copy of FF++, which
+  is a different and considerably more serious story.
+
+Until that runs, "the encoder is weak" should not appear in this file or in the
+paper. What is established is narrower and sharper: **with weights and
+architecture controlled, the gap survives, so it lives in the data pipeline.**
+
+---
+
 # Status — 2026-08-21 (late): probability MASS fixes the inversion
 
 ## Finding 9: scoring by mass instead of density turns 0.21 into 0.79
