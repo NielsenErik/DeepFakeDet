@@ -1,3 +1,67 @@
+# Status — 2026-08-22 (d): localization survives the rerun
+
+## Finding 19: the circuit is first on every localization metric — on the published encoder
+
+`scripts/p0_experiments.py --config configs/ffpp_official.yaml --skip 2 3`,
+after fitting the baselines on the same features. FF++ only: Celeb-DF ships no
+manipulation masks, so localization **cannot** be tested cross-dataset at all.
+
+| model | patch AUC | per-image | IoU | pointing |
+|---|---|---|---|---|
+| **PC ratio (conditional)** | **0.7137** | **0.7100** | **0.3321** | **0.3886** |
+| mahalanobis | 0.6860 | 0.6541 | 0.2894 | 0.2559 |
+| gmm | 0.6838 | 0.6590 | 0.2870 | 0.3870 |
+| patchcore | 0.6729 | 0.6444 | 0.2723 | 0.2559 |
+| flow | 0.6562 | 0.6280 | 0.2444 | 0.3183 |
+
+**The circuit leads on all four metrics.** On our encoder's features it lost
+`pointing` to PatchCore (0.3128 vs 0.4392); on the published encoder it wins
+that too. This is the first stage of the whole system that gets *better* under
+the rerun rather than dying.
+
+### But the margin narrowed, and it now misses the pre-registered gate
+
+The other models gain far more from the better representation than the circuit
+does — mahalanobis 0.5404 → 0.6860, gmm 0.5424 → 0.6838, flow 0.5113 → 0.6562,
+patchcore 0.6711 → 0.6729 — so the lead shrinks:
+
+| | strongest baseline | circuit | margin |
+|---|---|---|---|
+| our encoder | patchcore 0.6711 | 0.7366 | **+0.0655** |
+| official encoder | mahalanobis 0.6860 | 0.7137 | **+0.0277** |
+
+The pre-registered gate (PLAN.md) was **+0.03 over the strongest patch
+baseline**. Against PatchCore specifically the margin is +0.0408 and clears;
+against the strongest baseline, which is now Mahalanobis, it is +0.0277 and
+**narrowly misses**. Quoting the PatchCore comparison alone would clear a gate
+the result does not actually clear, and that must not happen in the writeup.
+
+Note also what the baseline jump means: most of the localization signal was
+never the circuit's exactness, it was the representation. On a good encoder even
+Mahalanobis localizes at 0.686.
+
+## Where the POC ends
+
+Two things survive two datasets and a validated pipeline, and they are the only
+two:
+
+1. **The exact log-ratio is nearly domain-invariant** — 0.8411 FF++ → 0.8357
+   Celeb-DF, a drop of 0.005 where supervision on identical features drops
+   0.060 (Finding 17). It never beats the classifier it sits on (0.8921).
+2. **Exact per-region conditionals give the best localization** — first on all
+   four metrics, +0.028 over the strongest baseline. FF++ only, by necessity.
+
+Both rest on the same mechanism and no competing model can compute it: a smooth,
+decomposable circuit conditions on 1,000+ dimensions and integrates over a
+region exactly. Flows, diffusion models and full-covariance Gaussians cannot.
+
+Everything else measured in this project is either an artefact of a
+reimplementation that does not transfer (Findings 9, 14, 16), a bug in our own
+pseudo-fake generator (Finding 1), a comparison against a number from the wrong
+compression level (Finding 11), or falsified outright (C5, Findings 3, 8).
+
+---
+
 # Status — 2026-08-22 (c): the official-encoder rerun. Finding 9 is dead; the ratio survives.
 
 The whole stack rebuilt on Shiohara & Yamasaki's released weights

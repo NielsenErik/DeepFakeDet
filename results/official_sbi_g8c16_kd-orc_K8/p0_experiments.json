@@ -1,0 +1,90 @@
+{
+  "tag": "official_sbi_g8c16_kd-orc_K8",
+  "config": "configs/ffpp_official.yaml",
+  "p0_1_localization": {
+    "models": {
+      "PC_ratio_conditional": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.713652333671309,
+        "patch_auc_per_image": 0.7099809942730152,
+        "iou_best_mean": 0.3321077149582537,
+        "pointing_accuracy": 0.3886255924170616,
+        "manipulated_patch_fraction": 0.15610189573459715
+      },
+      "mahalanobis": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.6859676631676157,
+        "patch_auc_per_image": 0.654149867285396,
+        "iou_best_mean": 0.28942187599711316,
+        "pointing_accuracy": 0.2559241706161137,
+        "manipulated_patch_fraction": 0.15610189573459715
+      },
+      "gmm": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.6837953345158042,
+        "patch_auc_per_image": 0.6589884099542896,
+        "iou_best_mean": 0.287031581070431,
+        "pointing_accuracy": 0.38704581358609796,
+        "manipulated_patch_fraction": 0.15610189573459715
+      },
+      "patchcore": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.6728644166974338,
+        "patch_auc_per_image": 0.6443836859806072,
+        "iou_best_mean": 0.2723411919116849,
+        "pointing_accuracy": 0.2559241706161137,
+        "manipulated_patch_fraction": 0.15610189573459715
+      },
+      "flow": {
+        "n_images": 1266,
+        "patch_auc_pooled": 0.6562363607400372,
+        "patch_auc_per_image": 0.6280387823086165,
+        "iou_best_mean": 0.2443771001104679,
+        "pointing_accuracy": 0.3183254344391785,
+        "manipulated_patch_fraction": 0.15610189573459715
+      }
+    },
+    "per_method_PC_ratio": {
+      "Deepfakes": {
+        "n_images": 284,
+        "patch_auc_pooled": 0.8619546684127636,
+        "patch_auc_per_image": 0.9005352146168606,
+        "iou_best_mean": 0.6156221522391215,
+        "pointing_accuracy": 0.7429577464788732,
+        "manipulated_patch_fraction": 0.21775968309859156
+      },
+      "Face2Face": {
+        "n_images": 168,
+        "patch_auc_pooled": 0.6729778504963408,
+        "patch_auc_per_image": 0.6596049187973039,
+        "iou_best_mean": 0.19018399476038422,
+        "pointing_accuracy": 0.17261904761904762,
+        "manipulated_patch_fraction": 0.0900297619047619
+      },
+      "FaceShifter": {
+        "n_images": 307,
+        "patch_auc_pooled": 0.5716993749027414,
+        "patch_auc_per_image": 0.5892782460825277,
+        "iou_best_mean": 0.21482209959516163,
+        "pointing_accuracy": 0.23778501628664495,
+        "manipulated_patch_fraction": 0.15441775244299674
+      },
+      "FaceSwap": {
+        "n_images": 309,
+        "patch_auc_pooled": 0.7239661618625415,
+        "patch_auc_per_image": 0.740851942698824,
+        "iou_best_mean": 0.38546429995394266,
+        "pointing_accuracy": 0.5016181229773463,
+        "manipulated_patch_fraction": 0.19862459546925568
+      },
+      "NeuralTextures": {
+        "n_images": 198,
+        "patch_auc_pooled": 0.6059348600261567,
+        "patch_auc_per_image": 0.6183769676728751,
+        "iou_best_mean": 0.144454098585915,
+        "pointing_accuracy": 0.12121212121212122,
+        "manipulated_patch_fraction": 0.05997474747474747
+      }
+    }
+  }
+}
