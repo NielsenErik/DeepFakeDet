@@ -209,8 +209,16 @@ def extract_video(
         crop = cv2.resize(rgb[y0:y1, x0:x1], (cfg.size, cfg.size),
                           interpolation=cv2.INTER_AREA)
         idx = len(kept)
-        cv2.imwrite(str(out_dir / f"{idx:03d}.jpg"), crop[:, :, ::-1],
-                    [cv2.IMWRITE_JPEG_QUALITY, cfg.jpeg_quality])
+        # At high quality, also turn OFF chroma subsampling.  The default 4:2:0
+        # throws away half the colour resolution, and the blending cue this
+        # project depends on is partly a colour mismatch between donor and
+        # context — so a "quality 100" crop with 4:2:0 is still discarding
+        # exactly the evidence the encoder needs.
+        params = [cv2.IMWRITE_JPEG_QUALITY, cfg.jpeg_quality]
+        if cfg.jpeg_quality >= 98:
+            params += [cv2.IMWRITE_JPEG_SAMPLING_FACTOR,
+                       cv2.IMWRITE_JPEG_SAMPLING_FACTOR_444]
+        cv2.imwrite(str(out_dir / f"{idx:03d}.jpg"), crop[:, :, ::-1], params)
         scale = cfg.size / max(x1 - x0, 1)          # landmarks -> crop frame
         landmarks.append((lmk - [x0, y0]) * scale)
         boxes.append(np.array([x0, y0, x1, y1], np.float32))

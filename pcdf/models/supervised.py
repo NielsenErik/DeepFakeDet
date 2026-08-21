@@ -33,7 +33,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from ..data.sbi import blend_ratio, self_blend
+from ..data.sbi import blend_ratio, match_source_pipeline, self_blend
 from ..device import autocast_kwargs, resolve_device
 
 
@@ -51,6 +51,85 @@ class SbiConfig:
     device: str = "auto"
     max_frames_per_video: int = 8
 
+    # ── ablation knobs (see scripts/encoder_ablation.py) ──────────────────
+    compress_policy: str = "asymmetric"
+    """
+    Who pays the extra JPEG generation that `self_blend` applies.
+
+    `asymmetric` is what the project has been training with: the blend is
+    re-encoded at q88-96 and the real image is not, so the two classes differ by
+    a whole compression generation over EVERY pixel, including the ones the
+    blend never touched.  `symmetric` gives both classes the same re-encode
+    draw; `none` removes it entirely.  Which of these is right is an empirical
+    question — the point is that `asymmetric` makes the pseudo-task partly
+    solvable without looking at the forgery.
+    """
+    pristine_background: bool = False
+    """
+    Composite the donor onto the UNPERTURBED image instead of onto a second
+    perturbed copy.  Measured motivation: with the current recipe a classifier
+    reading only blocks outside the blend mask separates real from self-blend at
+    AUC 0.79, because `source_target_pair` degrades both copies and swaps them
+    half the time, so the context is usually not the real face.  The same
+    features on real FF++ forgeries score 0.505.
+    """
+    hull_variety: bool = False
+    optimizer: str = "adamw"          # adamw | sam
+    sam_rho: float = 0.05
+    crops_dirname: str = "crops"      # swap in a higher-resolution crop set
+    tag: str = "sbi_effnetb4"         # checkpoint stem, so ablations coexist
+
+
+# ── SAM (Foret et al., ICLR 2021) ───────────────────────────────────────────
+#
+# SBI trains with SAM, and this project has been using plain AdamW.  It is a
+# plausible part of the gap for a reason specific to this task: the pseudo-task
+# is saturated (training loss ~0.008), so the loss surface around the solution
+# is what decides whether anything transfers to real forgeries, and that is
+# exactly what SAM controls.
+
+class SAM(torch.optim.Optimizer):
+    """Two-step sharpness-aware wrapper around a base optimizer."""
+
+    def __init__(self, params, base_cls=torch.optim.AdamW, rho: float = 0.05,
+                 **kwargs):
+        assert rho >= 0.0
+        super().__init__(params, dict(rho=rho, **kwargs))
+        self.base_optimizer = base_cls(self.param_groups, **kwargs)
+        self.param_groups = self.base_optimizer.param_groups
+        self.defaults.update(self.base_optimizer.defaults)
+
+    def _grad_norm(self) -> torch.Tensor:
+        dev = self.param_groups[0]["params"][0].device
+        return torch.norm(torch.stack([
+            p.grad.norm(p=2).to(dev) for g in self.param_groups
+            for p in g["params"] if p.grad is not None]), p=2)
+
+    @torch.no_grad()
+    def first_step(self) -> None:
+        """Climb to the worst point within the rho-ball."""
+        gn = self._grad_norm()
+        for g in self.param_groups:
+            scale = g["rho"] / (gn + 1e-12)
+            for p in g["params"]:
+                if p.grad is None:
+                    continue
+                e = p.grad * scale.to(p)
+                p.add_(e)
+                self.state[p]["e_w"] = e
+
+    @torch.no_grad()
+    def second_step(self) -> None:
+        """Step from the original point with the worst-case gradient."""
+        for g in self.param_groups:
+            for p in g["params"]:
+                if p.grad is None:
+                    continue
+                e = self.state[p].get("e_w")
+                if e is not None:
+                    p.sub_(e)
+        self.base_optimizer.step()
+
 
 class SbiFrameDataset(Dataset):
     """
@@ -61,11 +140,16 @@ class SbiFrameDataset(Dataset):
     """
 
     def __init__(self, items: Sequence[Tuple[str, np.ndarray]], size: int,
-                 train: bool = True, seed: int = 0):
+                 train: bool = True, seed: int = 0,
+                 compress_policy: str = "asymmetric", hull_variety: bool = False,
+                 pristine_background: bool = False):
         self.items = list(items)
         self.size = size
         self.train = train
         self.seed = seed
+        self.compress_policy = compress_policy
+        self.hull_variety = hull_variety
+        self.pristine_background = pristine_background
 
     def __len__(self) -> int:
         return len(self.items)
@@ -95,9 +179,19 @@ class SbiFrameDataset(Dataset):
         rng = np.random.default_rng((self.seed, i, int(time.time() * 1e3) % 100000))
         label = 0.0
         if self.train and rng.random() < 0.5 and lmk is not None:
-            blended, mask = self_blend(img, lmk, rng)
+            blended, mask = self_blend(
+                img, lmk, rng,
+                post_compress=(self.compress_policy == "asymmetric"),
+                hull_variety=self.hull_variety,
+                pristine_background=self.pristine_background)
             if 0.02 < blend_ratio(mask) < 0.9:      # skip degenerate blends
                 img, label = blended, 1.0
+        if self.train and self.compress_policy == "symmetric":
+            # both classes pay the same compression toll, drawn from the same
+            # distribution, so a double-JPEG detector learns nothing and the
+            # only cue left is the blend itself.  Train-only: the validation and
+            # test images are the deployment distribution and stay untouched.
+            img = match_source_pipeline(img, rng)
         if self.train:
             img = self._augment(img, rng)
         img = cv2.resize(img, (self.size, self.size), interpolation=cv2.INTER_AREA)
@@ -108,7 +202,8 @@ class SbiFrameDataset(Dataset):
 
 
 def collect_real_items(cfg: Dict, split: str = "train",
-                       max_per_video: int = 8) -> List[Tuple[str, np.ndarray]]:
+                       max_per_video: int = 8, crops_dirname: str = "crops"
+                       ) -> List[Tuple[str, np.ndarray]]:
     """(crop path, landmarks) for real videos of one split."""
     from ..data.manifest import read_manifest
 
@@ -117,7 +212,9 @@ def collect_real_items(cfg: Dict, split: str = "train",
             if r.split == split and r.label == 0]
     items: List[Tuple[str, np.ndarray]] = []
     for r in recs:
-        d = root / "crops" / r.dataset / r.method / Path(r.video).stem
+        d = root / crops_dirname / r.dataset / r.method / Path(r.video).stem
+        if not d.exists():
+            continue
         lmk_path = d / "landmarks.npy"
         lmks = np.load(lmk_path) if lmk_path.exists() else None
         jpgs = sorted(d.glob("[0-9]*.jpg"))[:max_per_video]
@@ -126,7 +223,8 @@ def collect_real_items(cfg: Dict, split: str = "train",
     return items
 
 
-def collect_labeled_items(cfg: Dict, split: str, max_per_video: int = 4
+def collect_labeled_items(cfg: Dict, split: str, max_per_video: int = 4,
+                          crops_dirname: str = "crops"
                           ) -> Tuple[List[Tuple[str, None]], np.ndarray, np.ndarray]:
     """Real + fake crops of a split, for VALIDATION / testing only."""
     from ..data.manifest import read_manifest
@@ -136,7 +234,9 @@ def collect_labeled_items(cfg: Dict, split: str, max_per_video: int = 4
             if r.split == split]
     items, labels, videos = [], [], []
     for r in recs:
-        d = root / "crops" / r.dataset / r.method / Path(r.video).stem
+        d = root / crops_dirname / r.dataset / r.method / Path(r.video).stem
+        if not d.exists():
+            continue
         for p in sorted(d.glob("[0-9]*.jpg"))[:max_per_video]:
             items.append((str(p), None))
             labels.append(r.label)
@@ -154,12 +254,20 @@ def train_sbi(cfg: Dict, scfg: Optional[SbiConfig] = None) -> Path:
     torch.manual_seed(scfg.seed)
     root = Path(cfg["root"])
 
-    train_items = collect_real_items(cfg, "train", scfg.max_frames_per_video)
-    val_items, val_y, val_v = collect_labeled_items(cfg, "val", 4)
+    train_items = collect_real_items(cfg, "train", scfg.max_frames_per_video,
+                                     scfg.crops_dirname)
+    val_items, val_y, val_v = collect_labeled_items(cfg, "val", 4,
+                                                    scfg.crops_dirname)
     print(f"[sbi] {len(train_items)} real training crops "
           f"(self-blended on the fly), {len(val_items)} validation crops")
+    print(f"[sbi] crops={scfg.crops_dirname} compress={scfg.compress_policy} "
+          f"hull_variety={scfg.hull_variety} opt={scfg.optimizer} "
+          f"tag={scfg.tag}", flush=True)
 
-    train_ds = SbiFrameDataset(train_items, scfg.image_size, True, scfg.seed)
+    train_ds = SbiFrameDataset(train_items, scfg.image_size, True, scfg.seed,
+                               compress_policy=scfg.compress_policy,
+                               hull_variety=scfg.hull_variety,
+                               pristine_background=scfg.pristine_background)
     val_ds = SbiFrameDataset(val_items, scfg.image_size, False, scfg.seed)
     train_dl = DataLoader(train_ds, batch_size=scfg.batch_size, shuffle=True,
                           num_workers=scfg.workers, pin_memory=True, drop_last=True,
@@ -168,12 +276,27 @@ def train_sbi(cfg: Dict, scfg: Optional[SbiConfig] = None) -> Path:
                         num_workers=scfg.workers, pin_memory=True)
 
     net = timm.create_model(scfg.arch, pretrained=True, num_classes=1).to(scfg.device)
-    opt = torch.optim.AdamW(net.parameters(), lr=scfg.lr, weight_decay=scfg.weight_decay)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=scfg.epochs)
+    use_sam = scfg.optimizer.lower() == "sam"
+    if use_sam:
+        opt = SAM(net.parameters(), torch.optim.AdamW, rho=scfg.sam_rho,
+                  lr=scfg.lr, weight_decay=scfg.weight_decay)
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt.base_optimizer,
+                                                           T_max=scfg.epochs)
+    else:
+        opt = torch.optim.AdamW(net.parameters(), lr=scfg.lr,
+                                weight_decay=scfg.weight_decay)
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=scfg.epochs)
     amp = autocast_kwargs(scfg.device, scfg.amp)
-    scaler = torch.amp.GradScaler(amp["device_type"], enabled=amp["enabled"])
-    out = root / "models" / "sbi_effnetb4.pt"
+    # SAM needs true (unscaled) gradients between its two steps, so it runs in
+    # bfloat16 autocast without a GradScaler rather than fp16 with one.
+    sam_amp = use_sam and scfg.amp and scfg.device.startswith("cuda")
+    scaler = torch.amp.GradScaler(amp["device_type"],
+                                  enabled=amp["enabled"] and not use_sam)
+    out = root / "models" / f"{scfg.tag}.pt"
     out.parent.mkdir(parents=True, exist_ok=True)
+
+    def _loss(x, y):
+        return F.binary_cross_entropy_with_logits(net(x).squeeze(1), y)
 
     best = -1.0
     history = []
@@ -182,13 +305,25 @@ def train_sbi(cfg: Dict, scfg: Optional[SbiConfig] = None) -> Path:
         tot, n, t0 = 0.0, 0, time.time()
         for x, y in train_dl:
             x, y = x.to(scfg.device, non_blocking=True), y.to(scfg.device)
-            opt.zero_grad(set_to_none=True)
-            with torch.amp.autocast(amp["device_type"], enabled=amp["enabled"]):
-                logit = net(x).squeeze(1)
-                loss = F.binary_cross_entropy_with_logits(logit, y)
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
+            if use_sam:
+                with torch.amp.autocast("cuda", dtype=torch.bfloat16,
+                                        enabled=sam_amp):
+                    loss = _loss(x, y)
+                loss.backward()
+                opt.first_step()
+                opt.zero_grad(set_to_none=True)
+                with torch.amp.autocast("cuda", dtype=torch.bfloat16,
+                                        enabled=sam_amp):
+                    _loss(x, y).backward()
+                opt.second_step()
+                opt.zero_grad(set_to_none=True)
+            else:
+                opt.zero_grad(set_to_none=True)
+                with torch.amp.autocast(amp["device_type"], enabled=amp["enabled"]):
+                    loss = _loss(x, y)
+                scaler.scale(loss).backward()
+                scaler.step(opt)
+                scaler.update()
             tot += float(loss) * len(x)
             n += len(x)
         sched.step()
@@ -216,7 +351,8 @@ def train_sbi(cfg: Dict, scfg: Optional[SbiConfig] = None) -> Path:
                         "best_val_auc_video": best, "history": history,
                         "protocol": "real frames + self-blends only; FF++ val "
                                     "forgeries used for model selection"}, out)
-    (root / "models" / "sbi_history.json").write_text(json.dumps(history, indent=2))
+    (root / "models" / f"{scfg.tag}_history.json").write_text(
+        json.dumps(history, indent=2))
     print(f"[sbi] best val video AUC {best:.4f} -> {out}")
     return out
 

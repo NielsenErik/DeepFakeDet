@@ -210,9 +210,11 @@ def cmd_ingest(cfg: Dict, args) -> None:
     recs = read_manifest(man_path)
     if args.methods:
         recs = [r for r in recs if r.method in args.methods]
+    if getattr(args, "splits", None):
+        recs = [r for r in recs if r.split in args.splits]
     if args.limit:
         recs = recs[:args.limit]
-    crops_root = root / "crops"
+    crops_root = root / (args.crops_dir or "crops")
 
     dcfg = cfg["data"]
     tasks = []
@@ -220,7 +222,8 @@ def cmd_ingest(cfg: Dict, args) -> None:
         n_frames = (dcfg["n_frames_train"] if r.split == "train"
                     else dcfg["n_frames_test"])
         kwargs = dict(n_frames=n_frames, size=dcfg["crop_size"],
-                      margin=dcfg["margin"], detector=dcfg["detector"])
+                      margin=dcfg["margin"], detector=dcfg["detector"],
+                      jpeg_quality=dcfg.get("jpeg_quality", 95))
         # frame-aligned real counterpart -> derived localization mask
         ref = None
         if r.dataset == "ffpp" and r.label == 1 and args.masks:
@@ -241,7 +244,14 @@ def cmd_ingest(cfg: Dict, args) -> None:
                       flush=True)
 
     kept = [r for r in recs if r.n_frames > 0]
-    write_manifest(kept, root / "manifests" / f"{args.dataset}_ingested.csv")
+    # A partial re-ingest (one split, or real videos only) must NOT clobber the
+    # manifest every existing result was produced from — that file is the index
+    # the whole pipeline reads.  A named crop set gets a named manifest.
+    man_out = (root / "manifests" / f"{args.dataset}_ingested.csv"
+               if not args.crops_dir
+               else root / "manifests" / f"{args.dataset}_ingested_{args.crops_dir}.csv")
+    write_manifest(kept, man_out)
+    print(f"[ingest] manifest -> {man_out}")
     print(f"[ingest] {len(kept)}/{len(recs)} videos yielded crops "
           f"({sum(r.n_frames for r in kept)} frames) in {(time.time() - t0) / 60:.1f} min")
     if args.purge_videos:
@@ -276,10 +286,16 @@ def build_parser() -> argparse.ArgumentParser:
     i = sub.add_parser("ingest", help="videos -> face crops")
     i.add_argument("--dataset", default="ffpp")
     i.add_argument("--methods", nargs="*", default=None)
+    i.add_argument("--splits", nargs="*", default=None,
+                   help="restrict to these splits (train/val/test)")
     i.add_argument("--limit", type=int, default=None)
     i.add_argument("--masks", action="store_true",
                    help="derive pseudo ground-truth masks from the aligned real video")
     i.add_argument("--purge-videos", action="store_true")
+    i.add_argument("--crops-dir", default=None,
+                   help="write crops under root/<name> instead of root/crops, "
+                        "so a second crop set (e.g. higher resolution) can "
+                        "coexist with the one every other result used")
     i.set_defaults(fn=cmd_ingest)
 
     from .stages import register_stages

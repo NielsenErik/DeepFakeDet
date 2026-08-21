@@ -114,12 +114,33 @@ def cmd_features(cfg: Dict, args) -> None:
 
     pseudo = bool(getattr(args, "pseudo", False))
     families = getattr(args, "pseudo_families", False)
+    one_family = getattr(args, "pseudo_family", None)
+    pristine = bool(getattr(args, "pristine_background", False))
+    if one_family:
+        pseudo = True
     if pseudo:
+        # p_blend is fitted on blends of REAL faces only — `_load_split(...,
+        # label=0, perturb="blend")` filters to those anyway, so blending the
+        # forged videos too was extracting 6x the data and discarding 5/6 of it.
+        n_before = len(recs)
+        recs = [r for r in recs if r.label == 0]
+        print(f"[features] pseudo-forgeries from the {len(recs)} REAL videos "
+              f"only (skipping {n_before - len(recs)} forged ones — their blends "
+              f"are discarded downstream)")
+
         from .data.sbi import blend_ratio, multi_family_blend, self_blend
 
         print("[features] SELF-BLENDING every crop: these become the training "
               "set of p_blend for the likelihood-ratio detector. No real "
               "forgery is involved — the blends are made from these same reals.")
+        if one_family:
+            print(f"[features] single family {one_family!r} — one component of "
+                  f"the pseudo-forgery mixture, fitted as its own circuit")
+        if pristine:
+            print("[features] pristine background: the donor is composited onto "
+                  "the UNPERTURBED crop, so pixels outside the mask are "
+                  "bit-identical to the real image (scripts/shortcut_audit.py "
+                  "measured AUC 0.94 of leakage without this)")
 
     def iter_crops(records, batch: int):
         """Yield (images uint8 batch, meta rows)."""
@@ -140,10 +161,16 @@ def cmd_features(cfg: Dict, args) -> None:
                     j = int(jpg.stem)
                     if lmks is None or j >= len(lmks):
                         continue
-                    if families:
-                        blended, mask, _fam = multi_family_blend(rgb, lmks[j], rng)
+                    if one_family:
+                        blended, mask, _fam = multi_family_blend(
+                            rgb, lmks[j], rng, family=one_family,
+                            pristine_background=pristine)
+                    elif families:
+                        blended, mask, _fam = multi_family_blend(
+                            rgb, lmks[j], rng, pristine_background=pristine)
                     else:
-                        blended, mask = self_blend(rgb, lmks[j], rng)
+                        blended, mask = self_blend(
+                            rgb, lmks[j], rng, pristine_background=pristine)
                     if not (0.02 < blend_ratio(mask) < 0.9):
                         continue          # degenerate blend teaches nothing
                     rgb = blended
@@ -210,11 +237,13 @@ def cmd_features(cfg: Dict, args) -> None:
 
     suffix = "" if getattr(args, "perturb", "clean") in (None, "clean") else f"_{args.perturb}"
     if pseudo:
-        suffix += "_blend"
+        suffix += f"_blend-{one_family}" if one_family else "_blend"
+        if pristine:
+            suffix += "P"
     for split, split_recs in by_split.items():
-        if suffix.endswith("_blend") and split not in ("train", "val"):
+        if pseudo and split not in ("train", "val"):
             continue          # p_blend is fitted on train, monitored on val
-        if suffix and not suffix.endswith("_blend") and split != "test":
+        if suffix and not pseudo and split != "test":
             continue          # robustness is a TEST-time question only
         out_npy = out_dir / f"{dataset}_{split}{suffix}.npy"
         if out_npy.exists() and not args.overwrite:
@@ -612,6 +641,13 @@ def register_stages(sub) -> None:
                    help="draw from ALL pseudo-forgery families (blend / render / "
                         "overshoot / statistical) so p_blend covers both the "
                         "rougher-than-real and smoother-than-real directions")
+    f.add_argument("--pseudo-family", default=None,
+                   help="extract ONE named family, so it can be fitted as its "
+                        "own component of an exact pseudo-forgery mixture")
+    f.add_argument("--pristine-background", action="store_true",
+                   help="composite the donor onto the unperturbed crop; without "
+                        "this the context is a degraded copy and real-vs-blend "
+                        "is 0.94 decidable outside the mask (shortcut_audit)")
     f.add_argument("--limit-videos", type=int, default=None,
                    help="cap videos per (split, method) — for quick subset runs")
     f.add_argument("--perturb", default="clean",
