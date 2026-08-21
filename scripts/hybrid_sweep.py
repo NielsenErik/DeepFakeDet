@@ -52,6 +52,11 @@ def main() -> int:
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--n-test", type=int, default=8000)
     ap.add_argument("--n-loc", type=int, default=1200)
+    ap.add_argument("--blend-suffix", default="blend",
+                    help="which pseudo-fake feature set to fit p_blend on; "
+                         "'blend-blendP' is the leak-free (pristine background) "
+                         "version")
+    ap.add_argument("--out-name", default="hybrid_sweep.json")
     args = ap.parse_args()
 
     cfg = load_config(args.config, [])
@@ -61,9 +66,11 @@ def main() -> int:
     d = grid * grid * c
 
     Ztr, _ = _load_split(cfg, "train", label=0)
-    Zbl, _ = _load_split(cfg, "train", label=0, perturb="blend")
+    Zbl, _ = _load_split(cfg, "train", label=0, perturb=args.blend_suffix)
     Zvr, _ = _load_split(cfg, "val", label=0)
-    Zvb, _ = _load_split(cfg, "val", label=0, perturb="blend")
+    Zvb, _ = _load_split(cfg, "val", label=0, perturb=args.blend_suffix)
+    print(f"[hybrid] p_blend fitted on {args.blend_suffix!r}: {Zbl.shape}",
+          flush=True)
     Zte, ite = _load_split(cfg, "test")
     rng = np.random.default_rng(cfg["seed"])
     if len(Zte) > args.n_test:
@@ -118,7 +125,7 @@ def main() -> int:
               f"logZ {lz_r:+.1e}/{lz_b:+.1e}", flush=True)
         det.save(root / "models" / f"ratio_hybrid_lam{lam}_{tag}.pt")
 
-    out = root / "results" / tag / "hybrid_sweep.json"
+    out = root / "results" / tag / args.out_name
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(results, indent=2, default=float))
     print("\n" + "=" * 66)

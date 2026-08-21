@@ -35,13 +35,46 @@ import numpy as np
 
 # ── mask construction ───────────────────────────────────────────────────────
 
-def landmark_hull_mask(landmarks: np.ndarray, shape: Tuple[int, int]) -> np.ndarray:
+HULL_REGIONS = ("full", "lower", "upper", "core")
+
+
+def _select_region(pts: np.ndarray, region: str) -> np.ndarray:
+    """
+    Subset of the landmarks whose convex hull becomes the blending mask.
+
+    SBI randomises the hull TYPE (whole face, lower half, …) so the network
+    cannot key on one boundary shape; a single hull family is a shape the
+    classifier can memorise, which is one of the ways a blend-trained detector
+    degenerates into a compositing detector.  Regions are defined geometrically
+    from the landmark cloud rather than by index, so this works with any
+    detector's landmark convention (MediaPipe's 478 here, dlib's 81 in the
+    paper).
+    """
+    if region == "full" or len(pts) < 8:
+        return pts
+    c = pts.mean(0)
+    if region == "lower":
+        return pts[pts[:, 1] >= c[1] - 0.10 * np.ptp(pts[:, 1])]
+    if region == "upper":
+        return pts[pts[:, 1] <= c[1] + 0.15 * np.ptp(pts[:, 1])]
+    if region == "core":
+        r = np.linalg.norm(pts - c, axis=1)
+        return pts[r <= 0.80 * r.max()]
+    raise KeyError(region)
+
+
+def landmark_hull_mask(landmarks: np.ndarray, shape: Tuple[int, int],
+                       region: str = "full") -> np.ndarray:
     """Convex hull of the face landmarks as a float mask in [0, 1]."""
     import cv2
 
     h, w = shape
     mask = np.zeros((h, w), np.float32)
-    pts = landmarks.astype(np.int32)
+    pts = landmarks.astype(np.float32)
+    pts = _select_region(pts, region)
+    if len(pts) < 3:
+        pts = landmarks.astype(np.float32)
+    pts = pts.astype(np.int32)
     pts[:, 0] = np.clip(pts[:, 0], 0, w - 1)
     pts[:, 1] = np.clip(pts[:, 1], 0, h - 1)
     hull = cv2.convexHull(pts)
@@ -185,6 +218,8 @@ def self_blend(
     landmarks: np.ndarray,
     rng: Optional[np.random.Generator] = None,
     post_compress: bool = True,
+    hull_variety: bool = False,
+    pristine_background: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Self-blended pseudo-fake from a single real face.
@@ -198,10 +233,24 @@ def self_blend(
     """
     rng = rng or np.random.default_rng()
     src, tgt = source_target_pair(img, rng)
-    mask = deform_mask(landmark_hull_mask(landmarks, img.shape[:2]), rng)
+    region = (HULL_REGIONS[int(rng.integers(len(HULL_REGIONS)))]
+              if hull_variety else "full")
+    mask = deform_mask(landmark_hull_mask(landmarks, img.shape[:2], region), rng)
     src, mask = _random_affine(src, mask, rng)
     m = mask[..., None]
-    blended = (m * src.astype(np.float32) + (1.0 - m) * tgt.astype(np.float32))
+    # MEASURED REASON for `pristine_background` (scripts/shortcut_audit.py):
+    # `source_target_pair` perturbs BOTH copies and swaps them with p=0.5, so
+    # roughly half the time the context — every pixel outside the mask — is a
+    # resolution-jittered, re-compressed copy of the real face rather than the
+    # real face.  A classifier reading only those untouched-by-the-blend blocks
+    # separates real from self-blend at AUC 0.79 (0.94 with the extra JPEG),
+    # while the same features on real FF++ forgeries score 0.505 — chance.  The
+    # pseudo-task therefore hands over a global low-level cue that does not
+    # exist in the forgeries we must detect.  Compositing the donor onto the
+    # UNPERTURBED image removes it, and is also the more faithful model: in a
+    # real swap the context is the original video frame, untouched.
+    bg = img if pristine_background else tgt
+    blended = (m * src.astype(np.float32) + (1.0 - m) * bg.astype(np.float32))
     out = np.clip(blended, 0, 255).astype(np.uint8)
     if post_compress:
         out = match_source_pipeline(out, rng)
@@ -277,6 +326,7 @@ def multi_family_blend(
     rng: Optional[np.random.Generator] = None,
     family: Optional[str] = None,
     post_compress: bool = True,
+    pristine_background: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, str]:
     """
     One pseudo-forgery from a randomly chosen family.  Returns
@@ -293,7 +343,8 @@ def multi_family_blend(
     fam = family or names[int(rng.integers(len(names)))]
 
     if fam == "blend":
-        out, mask = self_blend(img, landmarks, rng, post_compress=post_compress)
+        out, mask = self_blend(img, landmarks, rng, post_compress=post_compress,
+                               pristine_background=pristine_background)
         return out, mask, fam
 
     src = PSEUDO_FAMILIES[fam](img.copy(), rng)

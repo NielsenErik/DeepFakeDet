@@ -1,3 +1,260 @@
+# Status — 2026-08-06
+
+# WHY THIS IS NOT A STATE-OF-THE-ART DETECTOR — the investigation
+
+## Finding 0: the encoder plateau is real, and it kills the compute excuse
+
+The 100-epoch SBI run was killed at epoch 48 by the Aug-5 08:14 reboot (the same
+reboot that cleared the driver blocker). Its checkpoint survived:
+**best val video AUC 0.8722, reached at epoch 14.** Thirty-four further epochs
+never beat it, oscillating 0.83–0.86. Against the 40-epoch run's 0.8653 that is
+**+0.007 for 2.5× the compute**.
+
+STATUS previously argued the encoder was weak "by construction — 40 epochs,
+16 frames/video … so most of that shortfall is compute, not method". That
+hypothesis is now falsified. Reproduced again on 2026-08-06 at 16 frames/video,
+20 epochs: **0.8716**, i.e. the same ceiling from a quarter of the budget.
+
+## Finding 1: the gap is 98% upstream of the circuit — now measured
+
+The `0.860` encoder figure that appeared in this file since Aug 4 had **no
+artefact behind it** — no log, no result JSON produced it. `scripts/gap_waterfall.py`
+measures every stage on exactly the same crops (it reads the `path` field of the
+feature index, so the encoder is scored on the images whose projected features
+the probe and the circuit see). Measured:
+
+| stage | FF++ video AUC | lost here |
+|---|---|---|
+| published SBI on FF++ c23 (reported) | 0.9964 | — |
+| **our encoder, end to end** | **0.8312** | **+0.1652** |
+| linear probe on projected patch features (1024 d) | 0.8591 | −0.0280 |
+| circuit, one-class NLL | 0.8125 | +0.0467 |
+| circuit, exact log-ratio | 0.8283 | −0.0158 |
+| | **total 0.1681** | **encoder = 98%** |
+
+The real encoder number is **0.8312**, not 0.860 — and its val AUC was 0.8722,
+so there is a 0.041 val→test drop that model selection on 4 frames/video was
+hiding. Two consequences:
+
+* **The projection is not a bottleneck — it is not even lossy.** The probe on
+  16 channels × 64 patches reaches 0.8591, *above* the encoder's own 0.8312.
+  (The probe is supervised on val real forgeries, so it is an upper bound on
+  extractable signal rather than an information-preservation proof — but it does
+  establish both that PCA-16 discards nothing usable and that the encoder's own
+  head leaves 0.028 on the table.) `sota_push.sh` was queued to sweep
+  `grid=12, out_dim=32` on the theory that squeezing 1792 dims into 16 was
+  costing us. **That sweep is cancelled.**
+* Everything this project is about — density estimation, exact inference,
+  structure learning — is competing over the last 0.047.
+
+## Finding 2: the pseudo-task leaks a global cue that real forgeries do not have
+
+This is the substantive result, and it is a statement about the SBI *generator*,
+not about our training.
+
+`scripts/shortcut_audit.py` classifies real vs self-blend using **only 8×8 JPEG
+blocks lying entirely outside the (generously dilated) blending mask** — pixels
+the forgery never touched — from DCT coefficient histograms and blockiness
+alone. Splits are grouped by image so a no-signal condition reads as exactly
+0.5.
+
+| self-blend recipe | leak AUC outside the mask |
+|---|---|
+| **what this project has been training on** | **0.937** |
+| drop the post-blend JPEG re-encode | 0.812 |
+| composite onto the unperturbed image (pristine background) | 0.917 |
+| **pristine background + no re-encode** | **0.500** |
+| **pristine background + symmetric re-encode** | **0.500** |
+
+Two independent mechanisms, neither sufficient alone, jointly worth 0.44 AUC:
+
+1. `self_blend` ends with `match_source_pipeline`, a JPEG q88–96 re-encode
+   applied to the blend and **not** to the real image it is contrasted against.
+2. `source_target_pair` perturbs *both* copies and swaps them with p=0.5, so
+   about half the time the entire context — not the donor — is the
+   resolution-jittered, re-compressed copy. The pseudo-fake is globally marked.
+
+And the cue does not transfer. The identical features on **real FF++ forgeries**
+vs real faces:
+
+| | Deepfakes | Face2Face | FaceShifter | FaceSwap | NeuralTextures | pooled |
+|---|---|---|---|---|---|---|
+| periphery AUC | 0.491 | 0.480 | 0.528 | 0.474 | 0.512 | **0.477** |
+
+Chance. In a real swap the context *is* the original video frame, so no such
+signature exists — which is exactly what the pristine-background fix restores.
+
+**This explains the saturation directly.** The training loss reaches 0.008 and
+real-vs-blend AUC 0.9996 because ~94% of the pseudo-task is decidable without
+looking at the face at all; the network is not required to learn forgery
+evidence, so it does not, and 0.86 on real forgeries is what is left.
+
+Verified rather than assumed: for the pristine + no-reencode recipe the
+periphery pixels are **bit-identical** to the real crop (max difference 0 over
+40 images, `scripts/_check_periphery.py`), so 0.500 is a true null and not a
+weak classifier.
+
+### How this differs from the published position
+
+"The Alpha Blending Hypothesis" (arXiv 2605.10334) argues detectors act as
+*alpha blending boundary searchers* — its experiments manipulate boundary
+hardness and photometric mismatch, and it explicitly treats SBI as a generic
+blending heuristic rather than dissecting the generator. Our measurement is
+disjoint from that: the signal we find is **not at the boundary and not in the
+manipulated region at all**, and it comes from implementation choices in the
+pseudo-fake pipeline. If it generalises to the reference SBI implementation, it
+affects the whole SBI-derived line (SBI, FSBI, BlenD, …) as a *leakage audit
+that any pseudo-fake generator should have to pass*.
+
+## Finding 3: no recipe-level fix recovers the encoder gap
+
+Five controlled retrains, 20 epochs, 16 frames/video, identical protocol:
+
+| variant | val AUC | vs base | train loss |
+|---|---|---|---|
+| `sam` (SAM instead of AdamW) | 0.8747 | **+0.0030** | 0.0120 |
+| `base` (current recipe) | 0.8716 | — | 0.0155 |
+| `hull` (randomised hull type) | 0.8610 | −0.0106 | 0.0267 |
+| `all` | 0.8543 | −0.0173 | 0.0306 |
+| `noleak` (pristine bg + symmetric re-encode) | 0.8468 | −0.0249 | 0.0197 |
+
+**Every hypothesis fails.** SAM — the difference from published SBI that looked
+most likely to matter — buys +0.003, which is noise. Everything else hurts.
+
+Note the pattern: val AUC falls monotonically with final training loss. Two
+readings, and we cannot yet separate them: either harder pseudo-tasks genuinely
+transfer worse, or they are simply less converged at a fixed 20-epoch budget.
+The second is the more likely and the more boring, and it is the reason these
+are ranked rather than treated as final.
+
+`noleak` additionally carries a confound of our own making:
+`compress_policy=symmetric` re-encodes every *training* image while val and test
+stay untouched. `noleak_clean` (pristine background + **no** re-encode, equally
+leak-free at 0.500) removes that side effect and is queued.
+
+## Finding 4: coverage under the pseudo-fake density predicts detectability
+
+This is the strongest positive result of the investigation, and it is the kind of
+statement only an exactly-normalized density can make.
+
+For each manipulation, how far do real forgeries sit from the pseudo-fakes the
+model was actually fitted on? With exact densities that is measurable in nats:
+
+| manipulation | coverage under `p_mix` | mean log-ratio | detection AUC |
+|---|---|---|---|
+| Deepfakes | 0.733 | −1000 | 0.921 |
+| Face2Face | 0.563 | −1564 | 0.872 |
+| FaceShifter | 0.506 | −1846 | 0.844 |
+| NeuralTextures | 0.456 | −2300 | 0.808 |
+| FaceSwap | 0.297 | −3845 | 0.699 |
+| *(our own pseudo-fakes)* | 0.950 | +1427 | 1.000 |
+| *(real test faces)* | 0.132 | −7617 | — |
+
+**Spearman ρ = 1.000, Pearson r = 0.998** between mean log-ratio and
+per-manipulation AUC. The ordering is not approximately right, it is exactly
+right across all five manipulations.
+
+So the domain gap is not a hand-wave — it is a measurable quantity that
+*predicts* per-manipulation performance. (n = 5, so this is a strong
+suggestion, not an established law; it needs Celeb-DF-v2 and DF40 to become a
+claim.) It also reframes contribution C1: the diagnosis is no longer only
+"likelihood is the wrong statistic" but "**detectability is a function of
+pseudo-fake coverage, and coverage is computable**".
+
+## Finding 5: the mechanism mixture buys nothing (honest negative)
+
+`p_mix = Σ_f π_f p_f` over four forgery families, one circuit each, shared region
+graph, everything exactly normalized (verified: log Z ≈ 0 for all five circuits,
+`tests/test_family_mixture.py`).
+
+| scorer | FF++ video AUC |
+|---|---|
+| mixture over 4 families | 0.8286 |
+| `overshoot` alone | 0.8306 |
+| `render` alone | 0.8300 |
+| `blend` alone | 0.8285 |
+| `statistical` alone | 0.8274 |
+
+The mixture equals its best component to four decimals, and every component —
+including families designed to deviate in *opposite* directions (rougher vs
+smoother than real) — produces a near-identical per-method breakdown. At
+log-ratios of thousands of nats one component dominates the logsumexp entirely,
+so the mixture degenerates to a max.
+
+The **exact family posterior** `P(f | z)` is likewise uninformative: real faces
+get `blend` 0.599 and every manipulation gets `blend` 0.49–0.66. The hoped-for
+result (Face2Face → `render`) does not appear, at the image level or per region.
+
+Why: the four families are distinguishable in pixels but not after an encoder
+that was itself trained to make self-blends maximally separable from real. The
+representation collapses the mechanisms it was never asked to distinguish.
+
+## Finding 6: the saturation is caused by the encoder, not the leak
+
+A falsifiable prediction was made and **failed**. The hybrid λ sweep was flat
+because the pseudo-task was saturated (BCE 0.0000, real-vs-blend 0.9996); if
+~94% of that separability was the compression leak, leak-free blends should
+restore gradient. Rerun on `blend-blendP`:
+
+| λ | FF++ AUC | localization patch AUC | real-vs-blend |
+|---|---|---|---|
+| 1.0 | 0.8250 | 0.678 | **1.0000** |
+| 0.3 | 0.8268 | 0.673 | **1.0000** |
+| 0.0 | 0.8132 | 0.462 | **1.0000** |
+
+Real-vs-blend is 1.0000 — *more* saturated, not less. Removing the leak does not
+make self-blends harder to tell from real faces **in the SBI feature space**,
+because that space was built by training on exactly this discrimination. The
+representation and the pseudo-fakes are the same construction, so the density
+task on top is degenerate by design.
+
+(λ=0 still destroys localization, 0.678 → 0.462 — the earlier finding that a
+purely discriminative fit costs the density semantics reproduces.)
+
+## Finding 7: C5 (calibration) is not supported
+
+PLAN.md claims the ratio is a log-odds, so "thresholds transfer, abstention is
+principled". Measured on FF++:
+
+| | ECE | MCE |
+|---|---|---|
+| raw `sigmoid(s)` | 0.780 | 0.916 |
+| after temperature scaling (T = 110, fitted on val reals + own pseudo-fakes) | 0.766 | 0.890 |
+
+Risk–coverage barely moves: 0.780 at full coverage → 0.588 at 24%. The ranking
+is fine (AUC 0.83) but the probabilities are meaningless — scores run to −7617
+nats on real faces against +1427 on pseudo-fakes, so `sigmoid` saturates and no
+single temperature repairs it.
+
+This fails for the *same* reason as everything else: both densities are
+badly misspecified for real forgeries. **C5 should be dropped from the
+contribution list, or rewritten as a negative result** — "an exact log-ratio is
+a calibrated log-odds only under the pseudo-fake distribution it was fitted on,
+and that is precisely what does not transfer".
+
+## What is left, and the one untested hypothesis
+
+Everything recipe-level has now been tested and failed. What has **never** been
+varied is the input: every crop the encoder has seen was stored at 256px JPEG
+q95 with 4:2:0 chroma subsampling and then upsampled to 380 — two lossy steps
+attacking exactly the high-frequency and colour detail a blending artifact lives
+in, applied before the network sees anything. `crops_hires` (same faces, same
+detector, same margin, native 380px q100 4:4:4) is ingested and the `hires` /
+`hires_sam` variants are queued (`scripts/queue_hires.sh`).
+
+If `hires` does not move it either, the conclusion is that our encoder is simply
+a weaker SBI reimplementation in ways not captured by these four axes, and the
+paper should stop treating detection parity as reachable and lean entirely on
+the diagnosis (Findings 1, 4, 6) — which is where the defensible contribution
+now clearly sits.
+
+## In flight
+
+* `scripts/queue_ablation2.sh` → `noleak_clean`, `all_clean`.
+* `scripts/queue_hires.sh` → `hires`, `hires_sam`.
+
+---
+
 # Status — 2026-08-04
 
 ## P0 RESULTS — the circuit finally wins something no one else can do
