@@ -1,0 +1,34 @@
+{
+  "tag": "sbi_g8c16_kd-orc_K8",
+  "n_test": 8000,
+  "scores": {
+    "ratio_joint": {
+      "auc_video": 0.8282725461318549,
+      "auc_frame": 0.8103593181375583
+    },
+    "ratio_patch_max": {
+      "auc_video": 0.8062462098241359,
+      "auc_frame": 0.7639569061467667
+    },
+    "ratio_patch_topq": {
+      "auc_video": 0.8217317854977042,
+      "auc_frame": 0.7912527258696495
+    },
+    "ratio_patch_mean": {
+      "auc_video": 0.8256085939530451,
+      "auc_frame": 0.8076769268999393
+    }
+  },
+  "best": {
+    "score": "ratio_joint",
+    "auc_video": 0.8282725461318549,
+    "auc_frame": 0.8103593181375583
+  },
+  "per_method": {
+    "Deepfakes": 0.920090830449827,
+    "Face2Face": 0.8695934256055363,
+    "FaceShifter": 0.8419386002576212,
+    "FaceSwap": 0.7018274221453287,
+    "NeuralTextures": 0.8075065847234417
+  }
+}

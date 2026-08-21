@@ -1,0 +1,33 @@
+{
+  "probes": {
+    "image_mean": {
+      "auc_frame": 0.8006141982425768,
+      "auc_video": 0.8456817092013427,
+      "n_features": 16
+    },
+    "image_flat": {
+      "auc_frame": 0.7898798057528512,
+      "auc_video": 0.8591400713943205,
+      "n_features": 1024
+    },
+    "patch_max": {
+      "auc_frame": 0.6932988629112313,
+      "auc_video": 0.7586552293675741,
+      "n_features": 16
+    },
+    "patch_mean": {
+      "auc_frame": 0.7813513940080026,
+      "auc_video": 0.8236773402951675,
+      "n_features": 16
+    }
+  },
+  "best": "image_flat",
+  "per_method": {
+    "Deepfakes": 0.9153391230220044,
+    "Face2Face": 0.8645639085726464,
+    "FaceShifter": 0.8542277159145399,
+    "FaceSwap": 0.8406414832969258,
+    "NeuralTextures": 0.8209281261654857
+  },
+  "interpretation": "SIGNAL IS PRESENT: the features separate the classes under supervision, so a one-class model failing here is a statement about density-based detection, not about the representation."
+}

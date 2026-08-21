@@ -1,0 +1,2073 @@
+{
+  "tag": "spectral_g8c95_kd-orc_K8",
+  "config": {
+    "root": "/home/jawa17/deepfake_data",
+    "seed": 0,
+    "device": "cuda",
+    "data": {
+      "ffpp_root": "raw/ffpp/FaceForensics++_C23",
+      "splits_dir": ".",
+      "celebdf_root": "raw/celebdf",
+      "df40_root": "raw/df40",
+      "n_frames_train": 32,
+      "n_frames_test": 32,
+      "crop_size": 256,
+      "margin": 1.3,
+      "detector": "mediapipe",
+      "workers": 8,
+      "include_dfd": false
+    },
+    "features": {
+      "backbone": "spectral",
+      "batch": 64,
+      "out_dim": 0,
+      "grid": 8,
+      "whiten": false,
+      "max_projector_images": 20000
+    },
+    "pc": {
+      "n_sum_components": 8,
+      "n_input_components": 8,
+      "leaf_components": 4,
+      "patch_method": "kd",
+      "channel_method": "orc",
+      "epochs": 60,
+      "batch_size": 64,
+      "lr": 0.005,
+      "patience": 8,
+      "topq": 0.05,
+      "max_arity": 4
+    },
+    "baselines": [
+      "mahalanobis",
+      "gmm",
+      "patchcore",
+      "flow"
+    ],
+    "eval": {
+      "test_datasets": [
+        "ffpp"
+      ],
+      "robustness": [
+        "clean",
+        "jpeg70",
+        "jpeg50",
+        "resize0.5",
+        "blur"
+      ]
+    }
+  },
+  "per_dataset": {
+    "ffpp": {
+      "mixed_reals": false,
+      "models": {
+        "PC": {
+          "nll": {
+            "all": {
+              "auc_video": 0.4586712131706538,
+              "auc_frame": 0.46135305638448276,
+              "ap_video": 0.8117245016105006,
+              "eer_video": 0.5343065693430658,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4469071341041078,
+              "auc_frame": 0.4491842487285991,
+              "ap_video": 0.45631158809256955,
+              "eer_video": 0.5401459854014599,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5490969151260057,
+              "auc_frame": 0.5500773453461335,
+              "ap_video": 0.5428478663353348,
+              "eer_video": 0.4562043795620438,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.330385209654217,
+              "auc_frame": 0.3379240256034743,
+              "ap_video": 0.3884841296698788,
+              "eer_video": 0.6058394160583942,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.5669987745750972,
+              "auc_frame": 0.5661167812701573,
+              "ap_video": 0.5427479056595134,
+              "eer_video": 0.45985401459854014,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.3999680323938409,
+              "auc_frame": 0.4031002885822449,
+              "ap_video": 0.42726297624926735,
+              "eer_video": 0.5693430656934306,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_cond_max": {
+            "all": {
+              "auc_video": 0.5295540518940807,
+              "auc_frame": 0.5196344574105138,
+              "ap_video": 0.851275842440673,
+              "eer_video": 0.46277372262773725,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4753050242421013,
+              "auc_frame": 0.4807898543523521,
+              "ap_video": 0.4832311215038427,
+              "eer_video": 0.5291970802919708,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6773402951675637,
+              "auc_frame": 0.6385760834486093,
+              "ap_video": 0.6835160952630943,
+              "eer_video": 0.3941605839416058,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3756193723693324,
+              "auc_frame": 0.3892905588197191,
+              "ap_video": 0.41058170816599476,
+              "eer_video": 0.6021897810218978,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6984389152325643,
+              "auc_frame": 0.6535716969636785,
+              "ap_video": 0.6581607712965665,
+              "eer_video": 0.3686131386861314,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.42106665245884173,
+              "auc_frame": 0.43552651969008893,
+              "ap_video": 0.43906510716543834,
+              "eer_video": 0.5656934306569343,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_cond_topq": {
+            "all": {
+              "auc_video": 0.513804677926368,
+              "auc_frame": 0.5082339012009004,
+              "ap_video": 0.84025202831322,
+              "eer_video": 0.4744525547445255,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.47413287868293463,
+              "auc_frame": 0.47589743383141897,
+              "ap_video": 0.4839800779037782,
+              "eer_video": 0.5109489051094891,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6414832969257819,
+              "auc_frame": 0.6193962844773213,
+              "ap_video": 0.6299013903901594,
+              "eer_video": 0.4124087591240876,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.36650860461399115,
+              "auc_frame": 0.37658873018583994,
+              "ap_video": 0.40566519626055864,
+              "eer_video": 0.6131386861313868,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6708934945921466,
+              "auc_frame": 0.643237812531592,
+              "ap_video": 0.6261960725424797,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.4160051148169855,
+              "auc_frame": 0.4256475069700516,
+              "ap_video": 0.4391198474125599,
+              "eer_video": 0.5693430656934306,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_cond_absmax": {
+            "all": {
+              "auc_video": 0.5299483190367095,
+              "auc_frame": 0.5193083272762662,
+              "ap_video": 0.8513103791439741,
+              "eer_video": 0.4656934306569343,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.47471895146251797,
+              "auc_frame": 0.48209119104117226,
+              "ap_video": 0.48271862708050983,
+              "eer_video": 0.5255474452554745,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6790452341627151,
+              "auc_frame": 0.6339335771871067,
+              "ap_video": 0.684442282932937,
+              "eer_video": 0.3941605839416058,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.37476690287175657,
+              "auc_frame": 0.39341899913528433,
+              "ap_video": 0.4101054241894776,
+              "eer_video": 0.5985401459854014,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6969470936118067,
+              "auc_frame": 0.6468099456326766,
+              "ap_video": 0.6579213137102817,
+              "eer_video": 0.35766423357664234,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.4242634130747509,
+              "auc_frame": 0.4398823833088531,
+              "ap_video": 0.4396668686991601,
+              "eer_video": 0.5729927007299269,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_cond_abstopq": {
+            "all": {
+              "auc_video": 0.5213170653737546,
+              "auc_frame": 0.5127603830773743,
+              "ap_video": 0.8419098752979546,
+              "eer_video": 0.46715328467153283,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4794075336991848,
+              "auc_frame": 0.48077124943989424,
+              "ap_video": 0.4858091681936542,
+              "eer_video": 0.4927007299270073,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6519260482710854,
+              "auc_frame": 0.6177957290549339,
+              "ap_video": 0.6351664800120785,
+              "eer_video": 0.416058394160584,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3731152432202035,
+              "auc_frame": 0.3896363162214659,
+              "ap_video": 0.4079359967638854,
+              "eer_video": 0.6021897810218978,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6749960040492301,
+              "auc_frame": 0.6375017669156452,
+              "ap_video": 0.6286832239623725,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.42714049762906914,
+              "auc_frame": 0.4377139972213575,
+              "ap_video": 0.4423380633414522,
+              "eer_video": 0.5766423357664234,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_cond_lowmax": {
+            "all": {
+              "auc_video": 0.5540518940806649,
+              "auc_frame": 0.528727566191386,
+              "ap_video": 0.8475967073422548,
+              "eer_video": 0.4569343065693431,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.5852203100857797,
+              "auc_frame": 0.5470192859921403,
+              "ap_video": 0.5506253247807799,
+              "eer_video": 0.43430656934306566,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5325270392668763,
+              "auc_frame": 0.5105325145060187,
+              "ap_video": 0.5194107249551352,
+              "eer_video": 0.4927007299270073,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.5949171506207044,
+              "auc_frame": 0.552677419130703,
+              "ap_video": 0.5453887550369583,
+              "eer_video": 0.43430656934306566,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.48873141882892,
+              "auc_frame": 0.4927259549619912,
+              "ap_video": 0.5030917610012524,
+              "eer_video": 0.5072992700729928,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.5688635516010443,
+              "auc_frame": 0.5407651448739138,
+              "ap_video": 0.5382567855080232,
+              "eer_video": 0.4416058394160584,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_marg_max": {
+            "all": {
+              "auc_video": 0.5293622462571261,
+              "auc_frame": 0.519539207308052,
+              "ap_video": 0.8511679648869512,
+              "eer_video": 0.4635036496350365,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4752517448985028,
+              "auc_frame": 0.48076867552719327,
+              "ap_video": 0.48320200592649615,
+              "eer_video": 0.5291970802919708,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6765943843571848,
+              "auc_frame": 0.6383877975803884,
+              "ap_video": 0.682845346254991,
+              "eer_video": 0.3941605839416058,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.37561937236933235,
+              "auc_frame": 0.389318015448332,
+              "ap_video": 0.41057534783888,
+              "eer_video": 0.5912408759124088,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.698172518514572,
+              "auc_frame": 0.6531555491886949,
+              "ap_video": 0.6579786567789252,
+              "eer_video": 0.3722627737226277,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.4211732111460387,
+              "auc_frame": 0.43564857653748645,
+              "ap_video": 0.4390825218346651,
+              "eer_video": 0.5620437956204379,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_marg_absmax": {
+            "all": {
+              "auc_video": 0.5298737279556716,
+              "auc_frame": 0.519245937844204,
+              "ap_video": 0.8512387652680006,
+              "eer_video": 0.4664233576642336,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.47471895146251797,
+              "auc_frame": 0.48213055511910946,
+              "ap_video": 0.48276124423583894,
+              "eer_video": 0.5291970802919708,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6787788374447228,
+              "auc_frame": 0.6337475231857489,
+              "ap_video": 0.6840128112554624,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.37482018221535507,
+              "auc_frame": 0.39349472899971355,
+              "ap_video": 0.41012654850265196,
+              "eer_video": 0.5985401459854014,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6967872555810112,
+              "auc_frame": 0.646364749988146,
+              "ap_video": 0.657759781896974,
+              "eer_video": 0.3686131386861314,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.42426341307475085,
+              "auc_frame": 0.44008677898538917,
+              "ap_video": 0.43964668132360185,
+              "eer_video": 0.5729927007299269,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "incoherence": {
+            "all": {
+              "auc_video": 0.5121530182748149,
+              "auc_frame": 0.506623912836194,
+              "ap_video": 0.8383858917498952,
+              "eer_video": 0.48248175182481756,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.47663700783206353,
+              "auc_frame": 0.47943457740606,
+              "ap_video": 0.48801403992329406,
+              "eer_video": 0.5364963503649636,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6363684799403271,
+              "auc_frame": 0.6120240934491583,
+              "ap_video": 0.6220927313864344,
+              "eer_video": 0.4233576642335767,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.36720123608077143,
+              "auc_frame": 0.3779383075330679,
+              "ap_video": 0.40629451281691165,
+              "eer_video": 0.6094890510948905,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6619958442111993,
+              "auc_frame": 0.6367139797471209,
+              "ap_video": 0.6111730288394541,
+              "eer_video": 0.3832116788321168,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.4185625233097128,
+              "auc_frame": 0.4266247432703219,
+              "ap_video": 0.4417305853656469,
+              "eer_video": 0.5802919708029197,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "typicality": {
+            "all": {
+              "auc_video": 0.47624274068943473,
+              "auc_frame": 0.47301861114773475,
+              "ap_video": 0.8151777251976353,
+              "eer_video": 0.5204379562043795,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.47450583408812397,
+              "auc_frame": 0.46776921336303856,
+              "ap_video": 0.46672293718169117,
+              "eer_video": 0.5182481751824817,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5094570834887313,
+              "auc_frame": 0.5065718714694656,
+              "ap_video": 0.5232663371054037,
+              "eer_video": 0.5,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.43380041557888005,
+              "auc_frame": 0.4362676176298004,
+              "ap_video": 0.4316950162563077,
+              "eer_video": 0.5255474452554745,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.49086259257285947,
+              "auc_frame": 0.48481120729991134,
+              "ap_video": 0.5054895273239479,
+              "eer_video": 0.5109489051094891,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.4725877777185785,
+              "auc_frame": 0.4695260364867635,
+              "ap_video": 0.45684283018132116,
+              "eer_video": 0.4963503649635036,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          }
+        },
+        "mahalanobis": {
+          "patch_max": {
+            "all": {
+              "auc_video": 0.5247056316266183,
+              "auc_frame": 0.5077580364297036,
+              "ap_video": 0.844562501408483,
+              "eer_video": 0.48978102189781025,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46827215088710106,
+              "auc_frame": 0.4708699108709986,
+              "ap_video": 0.4761567724823149,
+              "eer_video": 0.5145985401459854,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6739304171772604,
+              "auc_frame": 0.6125246453898334,
+              "ap_video": 0.6653403478016715,
+              "eer_video": 0.3722627737226277,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.37114390750705956,
+              "auc_frame": 0.3871990361266474,
+              "ap_video": 0.4100817764335053,
+              "eer_video": 0.5802919708029197,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.7004635302893067,
+              "auc_frame": 0.6459210081349691,
+              "ap_video": 0.6368869545268607,
+              "eer_video": 0.35766423357664234,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.40971815227236397,
+              "auc_frame": 0.42191309217527684,
+              "ap_video": 0.43075866282293496,
+              "eer_video": 0.5802919708029197,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_topq": {
+            "all": {
+              "auc_video": 0.511545633757792,
+              "auc_frame": 0.5007552810977105,
+              "ap_video": 0.8371556534483533,
+              "eer_video": 0.5021897810218978,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46369012733763115,
+              "auc_frame": 0.466906197220801,
+              "ap_video": 0.4736761225552263,
+              "eer_video": 0.5109489051094891,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6454792476956684,
+              "auc_frame": 0.6043791124936783,
+              "ap_video": 0.6294360833311108,
+              "eer_video": 0.3978102189781022,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.36224625712611214,
+              "auc_frame": 0.37472336045824106,
+              "ap_video": 0.40512918930955827,
+              "eer_video": 0.5912408759124088,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6803772177526772,
+              "auc_frame": 0.6424659052378537,
+              "ap_video": 0.6212451906387527,
+              "eer_video": 0.3613138686131387,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.4059353188768714,
+              "auc_frame": 0.4149322666835773,
+              "ap_video": 0.42912802223121077,
+              "eer_video": 0.5693430656934306,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_mean": {
+            "all": {
+              "auc_video": 0.4793862219617454,
+              "auc_frame": 0.478689793750824,
+              "ap_video": 0.8196439567880867,
+              "eer_video": 0.5182481751824817,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4472800895092972,
+              "auc_frame": 0.45010089737787673,
+              "ap_video": 0.45747986477858715,
+              "eer_video": 0.5364963503649636,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5887367467632798,
+              "auc_frame": 0.5780778448379374,
+              "ap_video": 0.573951813778357,
+              "eer_video": 0.4416058394160584,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.33491395386008843,
+              "auc_frame": 0.34513475265051724,
+              "ap_video": 0.39022309008148803,
+              "eer_video": 0.6204379562043796,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6227822473227129,
+              "auc_frame": 0.6089957142230894,
+              "ap_video": 0.5739811942191723,
+              "eer_video": 0.4124087591240876,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.4032180723533486,
+              "auc_frame": 0.4107374522323145,
+              "ap_video": 0.4275098807144099,
+              "eer_video": 0.5693430656934306,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_absmax": {
+            "all": {
+              "auc_video": 0.5228728222068304,
+              "auc_frame": 0.5058034806236761,
+              "ap_video": 0.8443558091343605,
+              "eer_video": 0.4832116788321168,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4651819489583888,
+              "auc_frame": 0.4697060546931829,
+              "ap_video": 0.4754199851049021,
+              "eer_video": 0.5109489051094891,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6736640204592679,
+              "auc_frame": 0.607028394256603,
+              "ap_video": 0.6656328043963928,
+              "eer_video": 0.3795620437956204,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.36954552719910483,
+              "auc_frame": 0.3913233579479207,
+              "ap_video": 0.40966632512262324,
+              "eer_video": 0.5802919708029197,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.7015291171612765,
+              "auc_frame": 0.6406061146911655,
+              "ap_video": 0.6373685192111185,
+              "eer_video": 0.354014598540146,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.4044434972561137,
+              "auc_frame": 0.4200118746547351,
+              "ap_video": 0.4293014111811108,
+              "eer_video": 0.5766423357664234,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_abstopq": {
+            "all": {
+              "auc_video": 0.5132718844903831,
+              "auc_frame": 0.5011503806247316,
+              "ap_video": 0.8377969489660291,
+              "eer_video": 0.5021897810218978,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46416964143001754,
+              "auc_frame": 0.468602014008352,
+              "ap_video": 0.4743468474545212,
+              "eer_video": 0.5,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6489956843731686,
+              "auc_frame": 0.599358751172288,
+              "ap_video": 0.6319055920024716,
+              "eer_video": 0.3941605839416058,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.36507006233683204,
+              "auc_frame": 0.3859652248910812,
+              "ap_video": 0.4061795585995465,
+              "eer_video": 0.583941605839416,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6847994032713517,
+              "auc_frame": 0.6353583752248904,
+              "ap_video": 0.6233758454625359,
+              "eer_video": 0.35766423357664234,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.4033246310405456,
+              "auc_frame": 0.41613206902572897,
+              "ap_video": 0.42854294525210473,
+              "eer_video": 0.5656934306569343,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_lowmax": {
+            "all": {
+              "auc_video": 0.5684905961958548,
+              "auc_frame": 0.5371552995059472,
+              "ap_video": 0.8598989276200273,
+              "eer_video": 0.4372262773722628,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.677606691885556,
+              "auc_frame": 0.5979050924527061,
+              "ap_video": 0.6452129479254941,
+              "eer_video": 0.35036496350364965,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5000266396717993,
+              "auc_frame": 0.4980256347764138,
+              "ap_video": 0.49697945616720124,
+              "eer_video": 0.4927007299270073,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.6828280675582077,
+              "auc_frame": 0.5990616669154574,
+              "ap_video": 0.644603766302271,
+              "eer_video": 0.36496350364963503,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.4008737812350152,
+              "auc_frame": 0.4475117019020959,
+              "ap_video": 0.41734846793629965,
+              "eer_video": 0.572992700729927,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.5811178006286962,
+              "auc_frame": 0.5435192251955254,
+              "ap_video": 0.5750605231839064,
+              "eer_video": 0.4416058394160584,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "incoherence": {
+            "all": {
+              "auc_video": 0.5127284351856786,
+              "auc_frame": 0.4995862171860658,
+              "ap_video": 0.8386991191126996,
+              "eer_video": 0.4978102189781022,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46379668602482815,
+              "auc_frame": 0.46704647546300215,
+              "ap_video": 0.473655927189712,
+              "eer_video": 0.5109489051094891,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6560818370717673,
+              "auc_frame": 0.6043627640689075,
+              "ap_video": 0.6422644563669311,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3585167030742181,
+              "auc_frame": 0.372583592546321,
+              "ap_video": 0.4037238162943778,
+              "eer_video": 0.6021897810218978,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6830411849326016,
+              "auc_frame": 0.6409238240169911,
+              "ap_video": 0.6240855687292877,
+              "eer_video": 0.3759124087591241,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.40220576482497733,
+              "auc_frame": 0.412643135587657,
+              "ap_video": 0.427533276888972,
+              "eer_video": 0.5656934306569343,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          }
+        },
+        "gmm": {
+          "patch_max": {
+            "all": {
+              "auc_video": 0.5141989450689968,
+              "auc_frame": 0.5074726159589216,
+              "ap_video": 0.8429138605016885,
+              "eer_video": 0.4963503649635036,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4671000053279344,
+              "auc_frame": 0.47092334753685505,
+              "ap_video": 0.47497628843496253,
+              "eer_video": 0.5218978102189781,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6866109009537003,
+              "auc_frame": 0.6479307302177365,
+              "ap_video": 0.6756624389473249,
+              "eer_video": 0.3686131386861314,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3375779210400128,
+              "auc_frame": 0.35622930386575885,
+              "ap_video": 0.3949507762006661,
+              "eer_video": 0.6496350364963503,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6919388353135489,
+              "auc_frame": 0.659869912513073,
+              "ap_video": 0.6321688890363498,
+              "eer_video": 0.3613138686131387,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.38776706270978734,
+              "auc_frame": 0.401939199445522,
+              "ap_video": 0.42489134922378236,
+              "eer_video": 0.6094890510948905,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_topq": {
+            "all": {
+              "auc_video": 0.49958974905429165,
+              "auc_frame": 0.49677691497988596,
+              "ap_video": 0.8338226023901472,
+              "eer_video": 0.5,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46235814374766904,
+              "auc_frame": 0.46238170632954234,
+              "ap_video": 0.47171357412815973,
+              "eer_video": 0.5145985401459854,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6461718791624487,
+              "auc_frame": 0.6284080606996367,
+              "ap_video": 0.6317522326318457,
+              "eer_video": 0.3978102189781022,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.32921306409505036,
+              "auc_frame": 0.341848306273425,
+              "ap_video": 0.38982487964722823,
+              "eer_video": 0.6277372262773723,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6737705791464649,
+              "auc_frame": 0.6574003683236309,
+              "ap_video": 0.6153780577743895,
+              "eer_video": 0.3722627737226277,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.38643507911982516,
+              "auc_frame": 0.3933844463012393,
+              "ap_video": 0.42341291142211585,
+              "eer_video": 0.5948905109489051,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_mean": {
+            "all": {
+              "auc_video": 0.441302147157547,
+              "auc_frame": 0.44514669141909613,
+              "ap_video": 0.804976740447809,
+              "eer_video": 0.5474452554744526,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.40843944802600035,
+              "auc_frame": 0.41219348616555496,
+              "ap_video": 0.4318607816596075,
+              "eer_video": 0.5729927007299269,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5480846075976343,
+              "auc_frame": 0.548829034311382,
+              "ap_video": 0.5444601629809183,
+              "eer_video": 0.4854014598540146,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.2979913687463371,
+              "auc_frame": 0.30483688297110756,
+              "ap_video": 0.37570919879690756,
+              "eer_video": 0.6532846715328466,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.5842080025574086,
+              "auc_frame": 0.5853855275741725,
+              "ap_video": 0.5486511745686264,
+              "eer_video": 0.4489051094890511,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.3677873088603548,
+              "auc_frame": 0.37406485419272667,
+              "ap_video": 0.41157823527080056,
+              "eer_video": 0.6094890510948905,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_absmax": {
+            "all": {
+              "auc_video": 0.5154776493153604,
+              "auc_frame": 0.5084286333771565,
+              "ap_video": 0.8432206109651972,
+              "eer_video": 0.49708029197080295,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46917789972827534,
+              "auc_frame": 0.4721569231760918,
+              "ap_video": 0.47579205198184404,
+              "eer_video": 0.5109489051094891,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6904470136927914,
+              "auc_frame": 0.6468088823391036,
+              "ap_video": 0.6772298319637815,
+              "eer_video": 0.3759124087591241,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3374180830092174,
+              "auc_frame": 0.36068910086153294,
+              "ap_video": 0.3949385410020103,
+              "eer_video": 0.6423357664233577,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6930577015291172,
+              "auc_frame": 0.6571071218330834,
+              "ap_video": 0.6326298962866492,
+              "eer_video": 0.3613138686131387,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.387287548617401,
+              "auc_frame": 0.40491925100805054,
+              "ap_video": 0.4247433083561967,
+              "eer_video": 0.6094890510948905,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_abstopq": {
+            "all": {
+              "auc_video": 0.5071873834514359,
+              "auc_frame": 0.5026800845240398,
+              "ap_video": 0.8354941458321935,
+              "eer_video": 0.49927007299270076,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.47088283872342696,
+              "auc_frame": 0.46936758517300947,
+              "ap_video": 0.47499451388999314,
+              "eer_video": 0.5145985401459854,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6578400554105175,
+              "auc_frame": 0.6327481490012173,
+              "ap_video": 0.6365775139453709,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3353401886088763,
+              "auc_frame": 0.35376000037654803,
+              "ap_video": 0.3919848979412236,
+              "eer_video": 0.6131386861313868,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6786189994139272,
+              "auc_frame": 0.6548198607133686,
+              "ap_video": 0.6173803951206742,
+              "eer_video": 0.3686131386861314,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.3932548351004315,
+              "auc_frame": 0.4022550735232713,
+              "ap_video": 0.425846396666846,
+              "eer_video": 0.6021897810218979,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_lowmax": {
+            "all": {
+              "auc_video": 0.5915712078427193,
+              "auc_frame": 0.5581112165196841,
+              "ap_video": 0.863121412164259,
+              "eer_video": 0.44452554744525546,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.6887420746976396,
+              "auc_frame": 0.6219164246069636,
+              "ap_video": 0.6280399103764915,
+              "eer_video": 0.3138686131386861,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5267728701582397,
+              "auc_frame": 0.5158515275119996,
+              "ap_video": 0.5215712408352886,
+              "eer_video": 0.46715328467153283,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.6516063722094945,
+              "auc_frame": 0.5974423982345276,
+              "ap_video": 0.5947860938541542,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.470563162661836,
+              "auc_frame": 0.4799430751220961,
+              "ap_video": 0.4828866230877922,
+              "eer_video": 0.5255474452554745,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.6201715594863872,
+              "auc_frame": 0.5755920413018266,
+              "ap_video": 0.5835458637767124,
+              "eer_video": 0.416058394160584,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "incoherence": {
+            "all": {
+              "auc_video": 0.4991635143055038,
+              "auc_frame": 0.4976922171442045,
+              "ap_video": 0.8359088233248563,
+              "eer_video": 0.5116788321167883,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4743992754009271,
+              "auc_frame": 0.47655341786510275,
+              "ap_video": 0.48610193954613423,
+              "eer_video": 0.5255474452554745,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6336512334168042,
+              "auc_frame": 0.6182324217049944,
+              "ap_video": 0.632121845382016,
+              "eer_video": 0.4233576642335767,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.32905322606425486,
+              "auc_frame": 0.34282797559251404,
+              "ap_video": 0.38842250324554883,
+              "eer_video": 0.6313868613138687,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6724918749001013,
+              "auc_frame": 0.6554362962048441,
+              "ap_video": 0.6181479369741876,
+              "eer_video": 0.3759124087591241,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.3862219617454312,
+              "auc_frame": 0.39498120553424115,
+              "ap_video": 0.422454762367514,
+              "eer_video": 0.583941605839416,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          }
+        },
+        "patchcore": {
+          "patch_max": {
+            "all": {
+              "auc_video": 0.5342213223933081,
+              "auc_frame": 0.5191280911391979,
+              "ap_video": 0.8505583923590152,
+              "eer_video": 0.47591240875912405,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46193190899888115,
+              "auc_frame": 0.4694995261762445,
+              "ap_video": 0.4697347483650881,
+              "eer_video": 0.5255474452554745,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.7217752677287015,
+              "auc_frame": 0.6610462121425162,
+              "ap_video": 0.7098633821467802,
+              "eer_video": 0.33941605839416056,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.36059459747455913,
+              "auc_frame": 0.38187485963499046,
+              "ap_video": 0.4034354554346948,
+              "eer_video": 0.5912408759124088,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.7357344557515051,
+              "auc_frame": 0.6727564029444418,
+              "ap_video": 0.6639600892048145,
+              "eer_video": 0.3284671532846716,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.39107038201289357,
+              "auc_frame": 0.4100161082661262,
+              "ap_video": 0.41797363343332733,
+              "eer_video": 0.5583941605839415,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_topq": {
+            "all": {
+              "auc_video": 0.5223293729021259,
+              "auc_frame": 0.5132211536311364,
+              "ap_video": 0.8429562446199161,
+              "eer_video": 0.47883211678832116,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46182535031168426,
+              "auc_frame": 0.4670496089219424,
+              "ap_video": 0.4695684916878465,
+              "eer_video": 0.5291970802919708,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6893814268208216,
+              "auc_frame": 0.6516437755241874,
+              "ap_video": 0.6692250589047,
+              "eer_video": 0.3722627737226277,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3516436677500133,
+              "auc_frame": 0.3703559634228397,
+              "ap_video": 0.39954084300338144,
+              "eer_video": 0.5875912408759124,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.7167670094304439,
+              "auc_frame": 0.6698865349397505,
+              "ap_video": 0.6504092765556533,
+              "eer_video": 0.34306569343065696,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.3920294101976663,
+              "auc_frame": 0.40671619128599523,
+              "ap_video": 0.41955673503918867,
+              "eer_video": 0.5656934306569343,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_mean": {
+            "all": {
+              "auc_video": 0.4780329266343438,
+              "auc_frame": 0.4793170647037893,
+              "ap_video": 0.8196119365380334,
+              "eer_video": 0.5109489051094891,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4494112632532367,
+              "auc_frame": 0.45246330160034703,
+              "ap_video": 0.45737009680078433,
+              "eer_video": 0.5291970802919708,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5908679205072194,
+              "auc_frame": 0.5867141931555785,
+              "ap_video": 0.5766534688790095,
+              "eer_video": 0.44525547445255476,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.330598327028611,
+              "auc_frame": 0.3430774106583719,
+              "ap_video": 0.388570582834787,
+              "eer_video": 0.6204379562043796,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.620917470296766,
+              "auc_frame": 0.60787654649851,
+              "ap_video": 0.5769023493830535,
+              "eer_video": 0.43795620437956206,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.3983696520858863,
+              "auc_frame": 0.4060388916155291,
+              "ap_video": 0.4233940634589439,
+              "eer_video": 0.5437956204379562,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_absmax": {
+            "all": {
+              "auc_video": 0.5380894027385582,
+              "auc_frame": 0.5200448132780454,
+              "ap_video": 0.8513139528774569,
+              "eer_video": 0.47153284671532847,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4630507752144494,
+              "auc_frame": 0.47106905337757776,
+              "ap_video": 0.4700793510257132,
+              "eer_video": 0.5218978102189782,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.7240662795034365,
+              "auc_frame": 0.656022335630817,
+              "ap_video": 0.7112163510625766,
+              "eer_video": 0.33576642335766427,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.36917257179391544,
+              "auc_frame": 0.3902754953287869,
+              "ap_video": 0.40591353213105774,
+              "eer_video": 0.5948905109489051,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.73802546752624,
+              "auc_frame": 0.6673335095775775,
+              "ap_video": 0.665177917288034,
+              "eer_video": 0.3284671532846716,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.39613191965474986,
+              "auc_frame": 0.41509839573816454,
+              "ap_video": 0.4194611659048981,
+              "eer_video": 0.5620437956204379,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_abstopq": {
+            "all": {
+              "auc_video": 0.5301081570675049,
+              "auc_frame": 0.517636106012123,
+              "ap_video": 0.8448552273402863,
+              "eer_video": 0.4817518248175182,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.460493366721722,
+              "auc_frame": 0.47081191390329163,
+              "ap_video": 0.46968638498684334,
+              "eer_video": 0.5182481751824817,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6997708988225265,
+              "auc_frame": 0.6497662454241149,
+              "ap_video": 0.6750354870135883,
+              "eer_video": 0.36496350364963503,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3644307102136502,
+              "auc_frame": 0.3877853752323727,
+              "ap_video": 0.403675201240286,
+              "eer_video": 0.5766423357664233,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.7259843358729821,
+              "auc_frame": 0.6647373177952114,
+              "ap_video": 0.6549736380742373,
+              "eer_video": 0.3467153284671533,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.3998614737066439,
+              "auc_frame": 0.4146606601932903,
+              "ap_video": 0.4220160778572942,
+              "eer_video": 0.5474452554744526,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_lowmax": {
+            "all": {
+              "auc_video": 0.5556289626511801,
+              "auc_frame": 0.5217876698893306,
+              "ap_video": 0.8635403159363766,
+              "eer_video": 0.45985401459854014,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.5942777984975224,
+              "auc_frame": 0.5359362976750182,
+              "ap_video": 0.5900131398295365,
+              "eer_video": 0.43795620437956206,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.48319036709467733,
+              "auc_frame": 0.49058492543556,
+              "ap_video": 0.5052711256501663,
+              "eer_video": 0.4963503649635036,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.6661516330118813,
+              "auc_frame": 0.5691887709337181,
+              "ap_video": 0.6587765956934951,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.4435505354574032,
+              "auc_frame": 0.47187101046103525,
+              "ap_video": 0.4581765810541799,
+              "eer_video": 0.5583941605839415,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.5909744791944164,
+              "auc_frame": 0.5415015889440221,
+              "ap_video": 0.6143041215166498,
+              "eer_video": 0.4562043795620438,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "incoherence": {
+            "all": {
+              "auc_video": 0.5240875912408759,
+              "auc_frame": 0.5144162299108266,
+              "ap_video": 0.84394898990674,
+              "eer_video": 0.481021897810219,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4650221109275934,
+              "auc_frame": 0.47076891277479876,
+              "ap_video": 0.4719041716156881,
+              "eer_video": 0.5364963503649636,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6941765677446854,
+              "auc_frame": 0.6502571166422724,
+              "ap_video": 0.6755570933832538,
+              "eer_video": 0.36496350364963503,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3545740316479301,
+              "auc_frame": 0.37417862654995476,
+              "ap_video": 0.40071468221643397,
+              "eer_video": 0.5802919708029197,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.7136768075017316,
+              "auc_frame": 0.6666011062681221,
+              "ap_video": 0.6482676137958988,
+              "eer_video": 0.34306569343065696,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.39298843838243913,
+              "auc_frame": 0.40983136226271344,
+              "ap_video": 0.41963682521177126,
+              "eer_video": 0.5729927007299269,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          }
+        },
+        "flow": {
+          "patch_max": {
+            "all": {
+              "auc_video": 0.5143907507059513,
+              "auc_frame": 0.5094218217034363,
+              "ap_video": 0.8429802708763838,
+              "eer_video": 0.48832116788321167,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46598113911236605,
+              "auc_frame": 0.4706239063668752,
+              "ap_video": 0.4782761027267142,
+              "eer_video": 0.5401459854014599,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6743566519260482,
+              "auc_frame": 0.6479692578194571,
+              "ap_video": 0.6693432680662044,
+              "eer_video": 0.36496350364963503,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.3492993766316799,
+              "auc_frame": 0.36252656568903135,
+              "ap_video": 0.39866554397955434,
+              "eer_video": 0.6204379562043796,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6859715488305184,
+              "auc_frame": 0.6578039631694262,
+              "ap_video": 0.6294484086642863,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.39634503702914375,
+              "auc_frame": 0.40772019468360227,
+              "ap_video": 0.4285128348414601,
+              "eer_video": 0.5985401459854015,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_topq": {
+            "all": {
+              "auc_video": 0.4986946560818371,
+              "auc_frame": 0.4976785093585937,
+              "ap_video": 0.8326385662421278,
+              "eer_video": 0.4978102189781022,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46097288081410837,
+              "auc_frame": 0.4643129242199814,
+              "ap_video": 0.47567239753474094,
+              "eer_video": 0.5328467153284672,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.635249613724759,
+              "auc_frame": 0.6231071258152452,
+              "ap_video": 0.6189919355991643,
+              "eer_video": 0.4014598540145985,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.342639458681869,
+              "auc_frame": 0.35200081495756436,
+              "ap_video": 0.394761735539845,
+              "eer_video": 0.6204379562043796,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6622089615855933,
+              "auc_frame": 0.6490021791214091,
+              "ap_video": 0.6054432562984381,
+              "eer_video": 0.3722627737226277,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.39240236560285574,
+              "auc_frame": 0.39953267271727744,
+              "ap_video": 0.42645139517154634,
+              "eer_video": 0.5985401459854015,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_mean": {
+            "all": {
+              "auc_video": 0.44543662422078956,
+              "auc_frame": 0.4493560437872737,
+              "ap_video": 0.8056441608215144,
+              "eer_video": 0.5467153284671533,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.41829612659172033,
+              "auc_frame": 0.4220073117026186,
+              "ap_video": 0.43633668487092925,
+              "eer_video": 0.5802919708029197,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5454739197613085,
+              "auc_frame": 0.5476121368027258,
+              "ap_video": 0.5404112573149775,
+              "eer_video": 0.4817518248175182,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.30449144866535244,
+              "auc_frame": 0.31334967058769736,
+              "ap_video": 0.37847288171297416,
+              "eer_video": 0.6532846715328466,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.5837817678086206,
+              "auc_frame": 0.5812517277751088,
+              "ap_video": 0.5449277450909246,
+              "eer_video": 0.4233576642335767,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.37513985827694607,
+              "auc_frame": 0.38215390450169545,
+              "ap_video": 0.4161154376770271,
+              "eer_video": 0.6058394160583942,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_absmax": {
+            "all": {
+              "auc_video": 0.5177260376152166,
+              "auc_frame": 0.5104030967788448,
+              "ap_video": 0.8437032186521375,
+              "eer_video": 0.48248175182481756,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.4686451062922904,
+              "auc_frame": 0.47179996065270846,
+              "ap_video": 0.4792361151029012,
+              "eer_video": 0.5291970802919708,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6785657200703287,
+              "auc_frame": 0.643851156575727,
+              "ap_video": 0.6712722505542998,
+              "eer_video": 0.36496350364963503,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.35313548937077094,
+              "auc_frame": 0.3704005944528197,
+              "ap_video": 0.39990882024454766,
+              "eer_video": 0.6204379562043796,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6875166497948745,
+              "auc_frame": 0.6523389937258838,
+              "ap_video": 0.6303208740687418,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.40076722254781816,
+              "auc_frame": 0.41317775183623956,
+              "ap_video": 0.42997188741585574,
+              "eer_video": 0.5766423357664234,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_abstopq": {
+            "all": {
+              "auc_video": 0.5069103308647238,
+              "auc_frame": 0.5033986978542866,
+              "ap_video": 0.834495682430852,
+              "eer_video": 0.4890510948905109,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.46827215088710106,
+              "auc_frame": 0.4703579820166315,
+              "ap_video": 0.47871663162683964,
+              "eer_video": 0.5328467153284672,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.644893174916085,
+              "auc_frame": 0.6241589209727191,
+              "ap_video": 0.6238493741150911,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.35302893068357394,
+              "auc_frame": 0.3671294453402403,
+              "ap_video": 0.39816342124479376,
+              "eer_video": 0.5948905109489051,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6678032926634343,
+              "auc_frame": 0.6441996632571905,
+              "ap_video": 0.6078511654645659,
+              "eer_video": 0.3759124087591241,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.40055410517342427,
+              "auc_frame": 0.4107317024700086,
+              "ap_video": 0.42919937470794456,
+              "eer_video": 0.5802919708029197,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "patch_lowmax": {
+            "all": {
+              "auc_video": 0.5568437316852256,
+              "auc_frame": 0.5343032079885665,
+              "ap_video": 0.8518762442279083,
+              "eer_video": 0.4722627737226277,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.6280569023389633,
+              "auc_frame": 0.5726644372106307,
+              "ap_video": 0.5770433158151297,
+              "eer_video": 0.4014598540145985,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.5104161116735042,
+              "auc_frame": 0.5039145270874986,
+              "ap_video": 0.5161783093139172,
+              "eer_video": 0.5,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.6131386861313869,
+              "auc_frame": 0.5689076486770835,
+              "ap_video": 0.5641367001307596,
+              "eer_video": 0.42700729927007297,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.4596941765677447,
+              "auc_frame": 0.47940550781155644,
+              "ap_video": 0.49143716699790224,
+              "eer_video": 0.5401459854014599,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.5729127817145292,
+              "auc_frame": 0.5467683712162656,
+              "ap_video": 0.5491742363617138,
+              "eer_video": 0.44525547445255476,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          },
+          "incoherence": {
+            "all": {
+              "auc_video": 0.49579625979007935,
+              "auc_frame": 0.4954316176940186,
+              "ap_video": 0.8324408022021109,
+              "eer_video": 0.505109489051095,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.47088283872342696,
+              "auc_frame": 0.4718896559148738,
+              "ap_video": 0.4903589714200577,
+              "eer_video": 0.5328467153284672,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.6168149608396825,
+              "auc_frame": 0.6076370801467854,
+              "ap_video": 0.5993698807041492,
+              "eer_video": 0.4197080291970803,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.34530342586179336,
+              "auc_frame": 0.3557601877540299,
+              "ap_video": 0.396435343863011,
+              "eer_video": 0.6277372262773723,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.6529383557994566,
+              "auc_frame": 0.639748825112926,
+              "ap_video": 0.6043472468620352,
+              "eer_video": 0.3868613138686131,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.3930417177260375,
+              "auc_frame": 0.4017259279223195,
+              "ap_video": 0.4288863542041083,
+              "eer_video": 0.5912408759124088,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          }
+        },
+        "SBI": {
+          "prob": {
+            "all": {
+              "auc_video": 0.8595609782087483,
+              "auc_frame": 0.81150829873366,
+              "ap_video": 0.9673814390080194,
+              "eer_video": 0.2204379562043796,
+              "n_frames": 25430,
+              "n_videos": 822
+            },
+            "Deepfakes": {
+              "auc_video": 0.9400607384517023,
+              "auc_frame": 0.9174153675122081,
+              "ap_video": 0.9520020512634115,
+              "eer_video": 0.1094890510948905,
+              "n_frames": 8455,
+              "n_videos": 274
+            },
+            "Face2Face": {
+              "auc_video": 0.9259417123981032,
+              "auc_frame": 0.8708464120731498,
+              "ap_video": 0.9274565445330115,
+              "eer_video": 0.12043795620437955,
+              "n_frames": 8467,
+              "n_videos": 274
+            },
+            "FaceShifter": {
+              "auc_video": 0.8456497415951836,
+              "auc_frame": 0.790159746027306,
+              "ap_video": 0.8442607811670181,
+              "eer_video": 0.2262773722627737,
+              "n_frames": 8449,
+              "n_videos": 274
+            },
+            "FaceSwap": {
+              "auc_video": 0.7625073259097448,
+              "auc_frame": 0.7137275702360152,
+              "ap_video": 0.7839875017903175,
+              "eer_video": 0.3102189781021898,
+              "n_frames": 8458,
+              "n_videos": 274
+            },
+            "NeuralTextures": {
+              "auc_video": 0.8236453726890085,
+              "auc_frame": 0.7653722407281455,
+              "ap_video": 0.8106554766477959,
+              "eer_video": 0.25547445255474455,
+              "n_frames": 8465,
+              "n_videos": 274
+            }
+          }
+        }
+      }
+    }
+  },
+  "summary": {
+    "PC": {
+      "ffpp": {
+        "best_score": "patch_cond_lowmax",
+        "auc_video": 0.5540518940806649,
+        "auc_frame": 0.528727566191386
+      }
+    },
+    "mahalanobis": {
+      "ffpp": {
+        "best_score": "patch_lowmax",
+        "auc_video": 0.5684905961958548,
+        "auc_frame": 0.5371552995059472
+      }
+    },
+    "gmm": {
+      "ffpp": {
+        "best_score": "patch_lowmax",
+        "auc_video": 0.5915712078427193,
+        "auc_frame": 0.5581112165196841
+      }
+    },
+    "patchcore": {
+      "ffpp": {
+        "best_score": "patch_lowmax",
+        "auc_video": 0.5556289626511801,
+        "auc_frame": 0.5217876698893306
+      }
+    },
+    "flow": {
+      "ffpp": {
+        "best_score": "patch_lowmax",
+        "auc_video": 0.5568437316852256,
+        "auc_frame": 0.5343032079885665
+      }
+    },
+    "SBI": {
+      "ffpp": {
+        "best_score": "prob",
+        "auc_video": 0.8595609782087483,
+        "auc_frame": 0.81150829873366
+      }
+    }
+  }
+}

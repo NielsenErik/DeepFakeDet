@@ -1,0 +1,50 @@
+{
+  "tag": "spectral_g8c95_kd-orc_K8",
+  "d": 6080,
+  "n_eval": 8000,
+  "H1_dilution": {
+    "full_joint": {
+      "auc_video": 0.4605388547171446,
+      "auc_frame": 0.4649237562794529
+    },
+    "marginal_top16": {
+      "auc_video": 0.5192974096855236,
+      "auc_frame": 0.5145560571390881,
+      "auc_video_inverted": 0.48070259031447626,
+      "best": 0.5192974096855236
+    },
+    "marginal_top64": {
+      "auc_video": 0.5160378584423461,
+      "auc_frame": 0.5145091911626782,
+      "auc_video_inverted": 0.483962141557654,
+      "best": 0.5160378584423461
+    },
+    "marginal_top256": {
+      "auc_video": 0.45183227930347397,
+      "auc_frame": 0.4586757993168654,
+      "auc_video_inverted": 0.5481677206965261,
+      "best": 0.5481677206965261
+    },
+    "marginal_top1024": {
+      "auc_video": 0.4462553062462098,
+      "auc_frame": 0.4540362916235102,
+      "auc_video_inverted": 0.5537446937537902,
+      "best": 0.5537446937537902
+    }
+  },
+  "H2_direction": {
+    "median_loglik_real": -2751.90673828125,
+    "median_loglik_fake": -2643.677734375,
+    "fraction_of_fakes_ABOVE_real_median": 0.5538369124493168,
+    "reading": "fakes are MORE likely than reals \u2014 the low-density assumption is inverted",
+    "one_sided_auc": 0.4605388547171446,
+    "two_sided_auc": 0.47966299922030664
+  },
+  "H3_estimation": {
+    "pc_val_nll": 3003.834228515625,
+    "full_covariance_gaussian_val_nll": Infinity,
+    "pc_better_by_nats": Infinity,
+    "reading": "the circuit fits better than a full-covariance Gaussian"
+  },
+  "verdict": "H1 CONFIRMED: restricting the exact marginal to the most discriminative coordinates gains +0.093 AUC over the full joint. The signal is real but diluted across dimensions \u2014 the fix is a likelihood RATIO or a selected scope, not a better density model."
+}

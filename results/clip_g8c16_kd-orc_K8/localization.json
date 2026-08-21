@@ -1,0 +1,397 @@
+{
+  "tag": "clip_g8c16_kd-orc_K8",
+  "dataset": "ffpp",
+  "mask_source": "derived_frame_diff",
+  "n_images": 1711,
+  "models": {
+    "PC_conditional": {
+      "n_images": 1672,
+      "patch_auc_pooled": 0.5502259735158571,
+      "patch_auc_per_image": 0.5225454429380615,
+      "iou_best_mean": 0.17887553163266637,
+      "pointing_accuracy": 0.2021531100478469,
+      "manipulated_patch_fraction": 0.15676398026315788
+    },
+    "PC_marginal": {
+      "n_images": 1672,
+      "patch_auc_pooled": 0.5431529415409945,
+      "patch_auc_per_image": 0.5160678147418809,
+      "iou_best_mean": 0.1752642527452619,
+      "pointing_accuracy": 0.18301435406698566,
+      "manipulated_patch_fraction": 0.15676398026315788
+    },
+    "mahalanobis": {
+      "n_images": 1672,
+      "patch_auc_pooled": 0.5500058327222174,
+      "patch_auc_per_image": 0.5340097305096504,
+      "iou_best_mean": 0.17791006875060064,
+      "pointing_accuracy": 0.16088516746411483,
+      "manipulated_patch_fraction": 0.15676398026315788
+    },
+    "gmm": {
+      "n_images": 1672,
+      "patch_auc_pooled": 0.5450773576861612,
+      "patch_auc_per_image": 0.5260159739835717,
+      "iou_best_mean": 0.1788946445841458,
+      "pointing_accuracy": 0.16148325358851676,
+      "manipulated_patch_fraction": 0.15676398026315788
+    },
+    "patchcore": {
+      "n_images": 1672,
+      "patch_auc_pooled": 0.5106029204769642,
+      "patch_auc_per_image": 0.4914390645785617,
+      "iou_best_mean": 0.158102131383351,
+      "pointing_accuracy": 0.1848086124401914,
+      "manipulated_patch_fraction": 0.15676398026315788
+    },
+    "flow": {
+      "n_images": 1672,
+      "patch_auc_pooled": 0.5361927289316218,
+      "patch_auc_per_image": 0.5043757132854775,
+      "iou_best_mean": 0.1706178848320404,
+      "pointing_accuracy": 0.2117224880382775,
+      "manipulated_patch_fraction": 0.15676398026315788
+    }
+  },
+  "per_method_conditional": {
+    "Deepfakes": {
+      "n_images": 379,
+      "patch_auc_pooled": 0.6056981765643364,
+      "patch_auc_per_image": 0.5942339674937529,
+      "iou_best_mean": 0.26778938712528916,
+      "pointing_accuracy": 0.3245382585751979,
+      "manipulated_patch_fraction": 0.21767810026385223
+    },
+    "Face2Face": {
+      "n_images": 217,
+      "patch_auc_pooled": 0.5034228605331765,
+      "patch_auc_per_image": 0.4816504198456265,
+      "iou_best_mean": 0.11452735109240934,
+      "pointing_accuracy": 0.10138248847926268,
+      "manipulated_patch_fraction": 0.09079781105990783
+    },
+    "FaceShifter": {
+      "n_images": 405,
+      "patch_auc_pooled": 0.5032471115232754,
+      "patch_auc_per_image": 0.4910263319572152,
+      "iou_best_mean": 0.1552379459102129,
+      "pointing_accuracy": 0.12098765432098765,
+      "manipulated_patch_fraction": 0.15497685185185187
+    },
+    "FaceSwap": {
+      "n_images": 408,
+      "patch_auc_pooled": 0.5636139819104393,
+      "patch_auc_per_image": 0.5469579843401051,
+      "iou_best_mean": 0.21786190810833478,
+      "pointing_accuracy": 0.33578431372549017,
+      "manipulated_patch_fraction": 0.19910386029411764
+    },
+    "NeuralTextures": {
+      "n_images": 263,
+      "patch_auc_pooled": 0.4742279974745711,
+      "patch_auc_per_image": 0.4636450332789748,
+      "iou_best_mean": 0.07975760220701111,
+      "pointing_accuracy": 0.026615969581749048,
+      "manipulated_patch_fraction": 0.06048003802281369
+    }
+  },
+  "example_subsets": [
+    {
+      "video": "000_003",
+      "frame": 3,
+      "method": "Deepfakes",
+      "patches": [
+        58
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "000_003",
+      "frame": 4,
+      "method": "Deepfakes",
+      "patches": [
+        58
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "000_003",
+      "frame": 6,
+      "method": "Deepfakes",
+      "patches": [
+        58
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "000_003",
+      "frame": 13,
+      "method": "Deepfakes",
+      "patches": [
+        59
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "003_000",
+      "frame": 13,
+      "method": "Deepfakes",
+      "patches": [
+        3
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "003_000",
+      "frame": 21,
+      "method": "Deepfakes",
+      "patches": [
+        8
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "003_000",
+      "frame": 26,
+      "method": "Deepfakes",
+      "patches": [
+        4
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "012_026",
+      "frame": 9,
+      "method": "Deepfakes",
+      "patches": [
+        39
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "012_026",
+      "frame": 10,
+      "method": "Deepfakes",
+      "patches": [
+        60
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "015_919",
+      "frame": 3,
+      "method": "Deepfakes",
+      "patches": [
+        35
+      ],
+      "mask_overlap": 0.49705883860588074
+    },
+    {
+      "video": "015_919",
+      "frame": 5,
+      "method": "Deepfakes",
+      "patches": [
+        47
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "015_919",
+      "frame": 14,
+      "method": "Deepfakes",
+      "patches": [
+        9
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "015_919",
+      "frame": 17,
+      "method": "Deepfakes",
+      "patches": [
+        7
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "015_919",
+      "frame": 21,
+      "method": "Deepfakes",
+      "patches": [
+        36
+      ],
+      "mask_overlap": 0.560723066329956
+    },
+    {
+      "video": "015_919",
+      "frame": 27,
+      "method": "Deepfakes",
+      "patches": [
+        47
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "015_919",
+      "frame": 29,
+      "method": "Deepfakes",
+      "patches": [
+        34
+      ],
+      "mask_overlap": 0.3801470696926117
+    },
+    {
+      "video": "024_073",
+      "frame": 3,
+      "method": "Deepfakes",
+      "patches": [
+        59
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "024_073",
+      "frame": 5,
+      "method": "Deepfakes",
+      "patches": [
+        3
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "024_073",
+      "frame": 16,
+      "method": "Deepfakes",
+      "patches": [
+        3
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "026_012",
+      "frame": 6,
+      "method": "Deepfakes",
+      "patches": [
+        20
+      ],
+      "mask_overlap": 0.5838847756385803
+    },
+    {
+      "video": "026_012",
+      "frame": 7,
+      "method": "Deepfakes",
+      "patches": [
+        10
+      ],
+      "mask_overlap": 0.2285539209842682
+    },
+    {
+      "video": "026_012",
+      "frame": 15,
+      "method": "Deepfakes",
+      "patches": [
+        8
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "026_012",
+      "frame": 26,
+      "method": "Deepfakes",
+      "patches": [
+        18
+      ],
+      "mask_overlap": 0.793259859085083
+    },
+    {
+      "video": "029_048",
+      "frame": 16,
+      "method": "Deepfakes",
+      "patches": [
+        23
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "035_036",
+      "frame": 10,
+      "method": "Deepfakes",
+      "patches": [
+        46
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "035_036",
+      "frame": 17,
+      "method": "Deepfakes",
+      "patches": [
+        56
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "035_036",
+      "frame": 20,
+      "method": "Deepfakes",
+      "patches": [
+        57
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "035_036",
+      "frame": 25,
+      "method": "Deepfakes",
+      "patches": [
+        46
+      ],
+      "mask_overlap": 0.0
+    },
+    {
+      "video": "036_035",
+      "frame": 3,
+      "method": "Deepfakes",
+      "patches": [
+        42
+      ],
+      "mask_overlap": 0.48290443420410156
+    },
+    {
+      "video": "036_035",
+      "frame": 20,
+      "method": "Deepfakes",
+      "patches": [
+        42
+      ],
+      "mask_overlap": 0.5672181248664856
+    },
+    {
+      "video": "036_035",
+      "frame": 21,
+      "method": "Deepfakes",
+      "patches": [
+        42
+      ],
+      "mask_overlap": 0.5689951181411743
+    },
+    {
+      "video": "044_945",
+      "frame": 0,
+      "method": "Deepfakes",
+      "patches": [
+        40
+      ],
+      "mask_overlap": 0.0
+    }
+  ],
+  "summary": {
+    "PC_conditional": 0.5502259735158571,
+    "PC_marginal": 0.5431529415409945,
+    "mahalanobis": 0.5500058327222174,
+    "gmm": 0.5450773576861612,
+    "patchcore": 0.5106029204769642,
+    "flow": 0.5361927289316218,
+    "subset_mask_overlap": 0.14571078773587942
+  }
+}
