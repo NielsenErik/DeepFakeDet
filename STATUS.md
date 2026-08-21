@@ -1,8 +1,14 @@
 # Status — 2026-08-21
 
-Two things landed today: the F1 validation that `hands_off.md` §5 ranked first,
-and two ablation rows that had actually finished on Aug 6 after the hand-off was
-written and sat unread for two weeks.
+Three things landed today: the F1 validation that `hands_off.md` §5 ranked
+first, two ablation rows that had actually finished on Aug 6 after the hand-off
+was written and sat unread for two weeks, and the `hires` runs that close the
+last open recipe hypothesis.
+
+**The headline: F1 does not generalise (it is our bug), `hires` fails by
+−0.110, and every recipe-level explanation for the encoder gap is now
+exhausted.** Detection parity is formally off the table; the paper is a
+diagnosis.
 
 ## F1 does NOT generalise to the official SBI — it is our bug
 
@@ -84,6 +90,77 @@ to the official recipe on the periphery axis, and it is our *worst* result at
 from published SBI — removing it makes us worse. **The encoder gap has a cause
 we have not identified yet.**
 
+## Finding 8: high-resolution crops fail too — the last recipe hypothesis is closed
+
+`hires` was the one input-side variable never tested: every crop the encoder had
+ever seen was stored at 256px JPEG q95 4:2:0 and upsampled to 380.
+`crops_hires` is the same faces, same detector, same margin, at native 380px
+q100 4:4:4. Run twice, because the first run was confounded.
+
+| variant | val AUC | vs base | loss |
+|---|---|---|---|
+| base | 0.8716 | — | 0.0155 |
+| sam | 0.8747 | +0.0030 | 0.0120 |
+| **hires** | **0.7612** | **−0.1104** | 0.0183 |
+| **hires_sam** | **0.8368** | **−0.0348** | 0.0095 |
+| *hires_partialdata* | *0.7683* | *−0.1033* | *0.0164* |
+| *hires_sam_partialdata* | *0.8136* | *−0.0580* | *0.0125* |
+
+**Higher-fidelity input makes the encoder worse, decisively.** Two confounds
+were checked and both eliminated before this was believed:
+
+1. **Leak amplification — refuted by measurement.** `crops_hires` is stored q100
+   4:4:4 while `match_source_pipeline` re-encodes the blend at q88–96 with
+   cv2's default 4:2:0, so the fake differs from the real by a chroma-subsampling
+   change *plus* a quality drop — a bigger asymmetry than base. If that were the
+   cause the periphery leak would be much larger. It is not:
+   `results/shortcut_audit_crops_hires.json` gives **0.9486** against base's
+   0.937, with `pristine_bg_no_reencode` at exactly **0.5000** on both. The
+   F1 null reproduces on an independent crop set, which is a free check on the
+   audit's machinery.
+2. **Training-set size — eliminated by re-running.** The first `hires` run used
+   588 of 706 real videos (9,550 crops vs base's 11,187, −14.6%): the Aug-6
+   hires ingest was killed after writing 604 directories and `hands_off.md`
+   recorded train as "complete" when it was not. The train ingest was finished
+   (`706/720 videos, 1.7 min`) and both runs now draw on **exactly 11,187
+   crops**. The verdict did not move.
+
+### The re-run also gives a noise floor, for free
+
+`hires` and `hires_sam` have each now been trained twice, differing only by
+14.6% of the training data:
+
+| variant | partial data | full data | Δ |
+|---|---|---|---|
+| hires | 0.7683 | 0.7612 | −0.0071 |
+| hires_sam | 0.8136 | 0.8368 | **+0.0232** |
+
+The two move in *opposite* directions, so the data difference is not systematic
+and what is left is run-to-run variance of roughly **±0.02 val AUC** at this
+protocol. That is a retroactive correction to Finding 3, and it is the cheap
+version of the 3-seed check `hands_off.md` §5 item 5 asked for:
+
+- **`sam` +0.0030 and `hull` −0.0106 are inside the noise band.** "SAM buys
+  noise" is confirmed; "hull hurts" is not supported and must not be stated.
+- **Only the large effects survive**: `noleak_clean` −0.0636, `all_clean`
+  −0.0384, `hires` −0.1104.
+- Any ablation number quoted in the paper below ~0.02 needs real seeds behind
+  it or has to go.
+
+### What it closes
+
+`hands_off.md` §5 item 2: *"`hires` is the only untested cause of the encoder
+gap. If it also fails, stop trying to reach detection parity."* **It failed.**
+Every recipe-level axis — optimizer, leak, hull geometry, input resolution — has
+now been tested and none recovers the encoder gap. Finding 0 is complete and the
+decision it was gating is made: **the paper is purely diagnostic, and detection
+parity is not a goal.**
+
+The shape of the failure is worth one line, because it is the same shape as
+everything else here: `hires_sam` reaches the *lowest training loss in the whole
+ablation* (0.0095) and still lands 0.035 below base. The pseudo-task gets easier
+and transfer gets worse. That is Finding 6 again, from a fourth direction.
+
 ## Where that points
 
 Reading the official code to run the F1 test also produced a list of concrete,
@@ -104,17 +181,22 @@ Finding 0:
   `_random_affine` warps the donor affinely and the elastic term is applied to
   the *mask* instead.
 
-A faithful port is bounded work and is now a better-motivated experiment than
-`hires`, which remains untested but is a guess. Neither is a reason to reopen
-the detection-parity goal; both are reasons the paper can say *why* our
+A faithful port is bounded work and is now the ONLY untested lead, `hires`
+having since failed (Finding 8). It is not a reason to reopen the
+detection-parity goal; it is the reason the paper can say *why* our
 reimplementation underperforms rather than leaving it as "weaker in ways not
 captured".
 
 ## Also true as of today
 
-- `crops_hires` is worse than the hand-off recorded: 696 real train crop dirs
-  exist, but `manifests/ffpp_ingested_crops_hires.csv` has **8 rows**. The
-  manifest is unusable; train must be re-ingested, not just val.
+- `crops_hires` is now complete: train reals 706/720 and val all-six-methods
+  811/840, both at the config's `n_frames_test=32` so the frames match
+  `crops/` exactly. Note that training never reads
+  `ffpp_ingested_crops_hires.csv` at all — `collect_real_items` and
+  `collect_labeled_items` both hardcode `ffpp_ingested.csv` and use
+  `crops_dirname` only to redirect the directory lookup, silently skipping
+  any directory that is missing. That silent skip is what hid the 14.6%
+  shortfall in the first `hires` run.
 - Disk on the workstation is now **101 GB free**. `raw/ffpp_zip` (17 GB) is
   still redundant.
 - Every result JSON is now committed under `results/` (29 files, 5.4 MB).

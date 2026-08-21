@@ -1,0 +1,30 @@
+{
+  "T1_leakage": {
+    "note": "AUC over periphery blocks only \u2014 pixels the blend never touched. Chance = 0.5; anything above it is a cue the network can use without looking at the forgery.",
+    "current": {
+      "auc": 0.9486080000000001,
+      "n": 500,
+      "n_test": 250
+    },
+    "no_reencode": {
+      "auc": 0.6241599999999998,
+      "n": 500,
+      "n_test": 250
+    },
+    "pristine_bg": {
+      "auc": 0.9331839999999999,
+      "n": 500,
+      "n_test": 250
+    },
+    "pristine_bg_no_reencode": {
+      "auc": 0.500032,
+      "n": 500,
+      "n_test": 250
+    },
+    "pristine_bg_symmetric": {
+      "auc": 0.47545600000000005,
+      "n": 500,
+      "n_test": 250
+    }
+  }
+}
