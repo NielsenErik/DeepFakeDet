@@ -1,0 +1,79 @@
+{
+  "dataset": "celebdf",
+  "tag": "sbi_g8c16_kd-orc_K8",
+  "n_crops": 16059,
+  "d": 1024,
+  "eps": 1.0,
+  "rows": [
+    {
+      "stage": "published SBI (reported)",
+      "auc_video": 0.9287,
+      "note": "external"
+    },
+    {
+      "stage": "official SBI encoder, our crops",
+      "auc_video": 0.8920720630635135,
+      "note": "end-to-end"
+    },
+    {
+      "stage": "our SBI encoder",
+      "auc_video": 0.6901404929753512,
+      "note": "end-to-end"
+    },
+    {
+      "stage": "linear probe on projected features",
+      "auc_video": 0.6833824975417895,
+      "note": "supervised, fitted on FF++ train"
+    },
+    {
+      "stage": "circuit, one-class (nll)",
+      "auc_video": 0.5630551805743047,
+      "note": "one-class"
+    },
+    {
+      "stage": "circuit, raw NLL",
+      "auc_video": 0.5630551805743047,
+      "note": "one-class"
+    },
+    {
+      "stage": "circuit, exact log-ratio (ratio_patch_topq)",
+      "auc_video": 0.7090978784394113,
+      "note": "ratio"
+    },
+    {
+      "stage": "circuit, probability mass (eps=1)",
+      "auc_video": 0.5915204239788011,
+      "note": "mass"
+    },
+    {
+      "stage": "circuit, density - mass",
+      "auc_video": 0.44024465443394495,
+      "note": "mass"
+    },
+    {
+      "stage": "circuit, local dimension",
+      "auc_video": 0.3883639151375765,
+      "note": "mass"
+    }
+  ],
+  "nll_family": {
+    "nll": 0.5630551805743047,
+    "patch_cond_max": 0.41861240271319766,
+    "patch_cond_topq": 0.47625952035731545,
+    "patch_cond_absmax": 0.4435111577754446,
+    "patch_cond_abstopq": 0.447977601119944,
+    "patch_cond_lowmax": 0.45037748112594367,
+    "patch_marg_max": 0.4101128276919488,
+    "patch_marg_absmax": 0.4285285735713214,
+    "incoherence": 0.4999916670833125,
+    "typicality": 0.44179457693781976
+  },
+  "ratio_family": {
+    "ratio_joint": 0.6873822975517891,
+    "ratio_patch_max": 0.6916654167291636,
+    "ratio_patch_topq": 0.7090978784394113,
+    "ratio_patch_mean": 0.6791827075312902
+  },
+  "lid_real": 253.68190007427253,
+  "lid_fake": 274.0970348178174
+}

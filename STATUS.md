@@ -1,3 +1,79 @@
+# Status — 2026-08-22 (b): the full picture, on both datasets
+
+`scripts/full_picture.py` runs every stage in one process on one dataset, on the
+same crops, so the rows are comparable by construction. This is the table that
+should have existed in July.
+
+| stage | FF++ c23 | Celeb-DF-v2 | note |
+|---|---|---|---|
+| published SBI (reported) | — | 0.9287 | external |
+| official SBI encoder, our crops | 0.8657 | 0.8921 | end-to-end |
+| our SBI encoder | 0.8312 | 0.6901 | end-to-end |
+| linear probe on projected features | **0.8910** | 0.6834 | supervised, fitted on FF++ train |
+| circuit, one-class (best of family) | 0.8125 | 0.5631 | one-class |
+| circuit, raw NLL | 0.2116 | 0.5631 | one-class |
+| **circuit, exact log-ratio** | 0.8358 | **0.7091** | ratio |
+| circuit, probability mass | 0.2131 | 0.5915 | mass |
+| circuit, density − mass | 0.7882 | 0.4402 | mass |
+| circuit, local dimension | 0.7893 | 0.3884 | mass |
+| *local dim, real vs fake* | *640.6 / 390.0* | *253.7 / 274.1* | of d=1024 |
+
+## Finding 14: the circuit LOSES in-dataset and WINS cross-dataset
+
+Against the supervised probe on **identical coordinates**:
+
+* FF++: ratio 0.8358 vs probe 0.8910 — the circuit is **0.055 behind**.
+* Celeb-DF: ratio 0.7091 vs probe 0.6834 — the circuit is **0.026 ahead**, and
+  also ahead of the encoder it was built from (0.6901).
+
+The probe loses 0.208 crossing datasets; the ratio loses 0.127. **A one-class
+density ratio transfers better than supervision on the same features.** This is
+the first result in the project where the circuit beats its own supervised
+ceiling, and it is exactly the claim a density method should be making —
+discriminative fitting latches onto dataset-specific structure, an exactly
+normalized ratio does not.
+
+It is also the first time the *ratio* has beaten the *encoder end to end*.
+
+## Finding 15: the mass result does NOT transfer (honest negative)
+
+Finding 9 does not survive a second dataset. **The dimension gap inverts sign.**
+
+| | real | fake | forgeries are |
+|---|---|---|---|
+| FF++ c23 | 640.6 | 390.0 | **lower**-dimensional ✓ |
+| Celeb-DF-v2 | 253.7 | 274.1 | **higher**-dimensional ✗ |
+
+So `density − mass` falls from 0.7882 to 0.4402 and local dimension from 0.7893
+to 0.3884 — both below chance on Celeb-DF. Kamkari's mechanism held on FF++ and
+does not hold here.
+
+**One confound, and it is a large one.** These CDF geometry numbers are computed
+in the feature space of an encoder that scores **0.6901** on CDF. The
+representation demonstrably does not transfer (Finding 12), so its geometry on
+CDF may be measuring nothing. Finding 9 has therefore not had a fair
+cross-dataset test — it has had a test on a broken representation.
+
+**The test it deserves**: extract features with the OFFICIAL encoder (0.8921 on
+CDF), refit the circuit on those, and rerun. That is one feature extraction and
+one fit. Until then the honest status of Finding 9 is *demonstrated on FF++,
+untested on a working cross-dataset representation* — not *refuted*.
+
+## What the numbers mean for the paper
+
+* The **ratio** (C2) is the result that survives both datasets and is the only
+  stage that beats supervision anywhere. It should lead.
+* The **mass/LID** work (Finding 9) is on hold pending the official-encoder
+  rerun. It is the most novel thing here and the most fragile.
+* The **one-class NLL** family is dead cross-dataset: 0.5631, near chance. The
+  inversion that `patch_cond_lowmax` repairs on FF++ (0.2116 → 0.8125) does not
+  repair on CDF (0.5631). That two-sided trick is FF++-specific.
+* Our encoder must be replaced by the official one before any of this is
+  written up. Every circuit row above sits on a representation that loses 0.20
+  crossing datasets.
+
+---
+
 # Status — 2026-08-22: Celeb-DF-v2 landed. The pipeline is CORRECT.
 
 ## Finding 12: the pipeline reproduces a published cross-dataset number

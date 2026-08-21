@@ -6,13 +6,15 @@
   "published_reported": 0.9964,
   "by_crop_rule": {
     "stored": {
-      "auc_frame": 0.6452635459606328,
-      "auc_video_mean": 0.680132660033665,
-      "auc_video_max": 0.6855907204639768,
+      "auc_frame": 0.6532448566265755,
+      "auc_video_mean": 0.6901404929753512,
+      "auc_video_max": 0.6846324350449144,
       "per_method": {
-        "Celeb-synthesis": 0.680132660033665
+        "Celeb-synthesis": 0.6901404929753512
       },
-      "recovered_fraction_of_gap": -0.9144512104499705
+      "recovered_fraction_of_gap": -0.8538711078973907
     }
-  }
+  },
+  "target": 0.9287,
+  "vs_target": -0.2385595070246488
 }

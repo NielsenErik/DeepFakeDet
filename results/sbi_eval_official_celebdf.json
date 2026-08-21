@@ -1,0 +1,20 @@
+{
+  "checkpoint": "/home/jawa17/deepfake_data/models/official_sbi/FFc23.tar",
+  "dataset": "celebdf",
+  "n_crops": 16059,
+  "ours_same_crops": 0.8312,
+  "published_reported": 0.9964,
+  "by_crop_rule": {
+    "stored": {
+      "auc_frame": 0.8243590815451777,
+      "auc_video_mean": 0.8920720630635135,
+      "auc_video_max": 0.8775394563605153,
+      "per_method": {
+        "Celeb-synthesis": 0.8920720630635135
+      },
+      "recovered_fraction_of_gap": 0.3684749580115828
+    }
+  },
+  "target": 0.9287,
+  "vs_target": -0.03662793693648647
+}
