@@ -1,8 +1,126 @@
+# Status — 2026-08-21 (late): probability MASS fixes the inversion
+
+## Finding 9: scoring by mass instead of density turns 0.21 into 0.79
+
+`scripts/mass_vs_density.py`, `results/sbi_g8c16_kd-orc_K8/mass_vs_density.json`.
+Full FF++ test set, 25,430 crops, d = 1024, on the circuit already fitted — no
+retraining, no new features, no supervision.
+
+A density is mass per unit volume. Kamkari et al. (ICML 2024, arXiv:2403.18910)
+show the likelihood OOD paradox is exactly this confusion: data on a thin,
+low-dimensional sheet gets large density and near-zero mass, which is why models
+assign OOD inputs high likelihood and never generate them. They must estimate
+Local Intrinsic Dimension as a stand-in for volume, because a flow or a
+diffusion model cannot integrate its own density. **A smooth decomposable
+circuit can**, exactly — `EinsumPC.log_ball`, which was already implemented and
+equivalence-tested and had never been used as a score.
+
+| score | FF++ video AUC |
+|---|---|
+| `density` = −log p(x) | **0.2116** |
+| local dimension alone | 0.7258 |
+| `density − mass` (Kamkari's dual criterion) | **0.7884** |
+| *circuit, one-class NLL family (previously measured)* | *0.8125* |
+| *circuit, exact log-ratio (previously measured)* | *0.8283* |
+
+### The inversion is eliminated, on every manipulation
+
+| method | density | LID | density − mass |
+|---|---|---|---|
+| Deepfakes | 0.1909 | 0.6618 | **0.8091** |
+| Face2Face | 0.1722 | 0.7641 | **0.8278** |
+| FaceShifter | 0.1799 | 0.7914 | **0.8201** |
+| FaceSwap | 0.3127 | 0.6673 | **0.6873** |
+| NeuralTextures | 0.2024 | 0.7443 | **0.7976** |
+| **pooled** | **0.2116** | 0.7258 | **0.7884** |
+
+Every manipulation was below chance under the likelihood. Every one is above
+0.68 under mass. This is the same model, the same features and the same crops —
+only the query changed.
+
+### The mechanism, measured
+
+Local dimension read off each adjacent pair of eps (the slope of log P(box)
+against log 2ε — an exact LID, not an estimate):
+
+| ε band | d real | d fake | video AUC |
+|---|---|---|---|
+| 0.003–0.010 | 1024.2 | 1024.0 | 0.6212 |
+| 0.010–0.031 | 1024.0 | 1023.7 | 0.6327 |
+| 0.031–0.102 | 1019.5 | 1013.9 | 0.7319 |
+| 0.102–0.305 | 950.6 | 879.8 | 0.7839 |
+| **0.305–1.02** | **657.9** | **415.0** | **0.7894** |
+| **1.02–3.05** | **284.5** | **77.2** | 0.7872 |
+| 3.05–10.2 | 32.4 | 5.3 | 0.7739 |
+| 10.2–30.5 | 0.0 | 0.0 | 0.7401 |
+| 30.5–102 | 0.0 | 0.0 | 0.5000 |
+
+**Forgeries occupy roughly a quarter of the effective dimensions real faces do**
+(284.5 vs 77.2 at the 1–3 band). Kamkari's prediction, confirmed on deepfakes.
+
+Two sanity checks fall out of the same table. At the smallest ε both classes
+read d = 1024, which is correct — every smooth density is full-dimensional at
+infinitesimal scale, and it is why the mass score is *identical* to density
+there (Spearman ρ = 1.0000 for every ε ≤ 0.03). At the largest ε the box
+swallows the support, mass → 1, d → 0 and AUC → 0.500. Normalization confirmed
+from both ends.
+
+### What it does not do, stated plainly
+
+**It does not beat the project's existing scores** — 0.7884 against 0.8125 for
+the one-class NLL family and 0.8283 for the log-ratio. As a *detector* this is
+not yet the best thing here.
+
+The likely reason is structural and is the obvious next experiment. The mass
+score is **global**, over the whole 1024-d joint. The 0.8125 comes from
+**per-patch conditional** scores with per-position calibration. The two ideas are
+orthogonal: nothing stops a per-patch *mass* score, using
+`region_log_marginals` with box bounds instead of point evaluations. That should
+beat both, and it is the natural follow-up.
+
+### Why this matters more than the number
+
+- It is the first result where the circuit is **required** rather than
+  permitted. A full-covariance GMM — the model that ties the circuit at 0.830 on
+  detection — cannot compute box mass at all: it needs the multivariate normal
+  CDF, intractable at d = 1024. Flows and diffusion models cannot integrate
+  their own density either. This query is exclusive to tractable circuits.
+- It answers Le Lan & Dinh (Entropy 2021, arXiv:2012.03808), the deepest
+  objection to the whole approach: a density is not reparametrization-invariant,
+  so its ordering carries less information than anomaly detection assumes.
+  **Probability mass over a region is invariant.** Scoring by mass removes the
+  flaw rather than working around it.
+- It converts C1 from a diagnosis into a repair. "Fakes are not outliers" was a
+  negative result; "fakes are not outliers *in density*, and mass fixes it"
+  is a method.
+
+### Cost, risks and where the floor is
+
+`log_ball` inherits a float32 precision floor: the identity
+log P(box) → log p(x) + log vol holds to 3e-4 at ε = 1e-3 and degrades in both
+directions — truncation above, cancellation in log(Φ(hi) − Φ(lo)) below.
+Measured error at ε = 1e-1 … 1e-6: 4.4e-1 / 4.7e-3 / 2.8e-4 / 1.8e-3 / 2.2e-2 /
+5.3e-1 (`tests/test_mass.py`, 5 new tests; suite now 28 passed). **Do not use
+ε below 1e-3 in float32.**
+
+The risk that the Gaussian-mixture leaves would be too smooth to resolve the
+sheet is **real but survivable**: below ε ≈ 1 the mass score is a monotone
+function of density and ranks identically. The signal lives at ε ∈ [0.1, 10],
+and the sweep is what makes that visible instead of assumed.
+
+---
+
 # Status — 2026-08-21
 
-Two things landed today: the F1 validation that `hands_off.md` §5 ranked first,
-and two ablation rows that had actually finished on Aug 6 after the hand-off was
-written and sat unread for two weeks.
+Three things landed today: the F1 validation that `hands_off.md` §5 ranked
+first, two ablation rows that had actually finished on Aug 6 after the hand-off
+was written and sat unread for two weeks, and the `hires` runs that close the
+last open recipe hypothesis.
+
+**The headline: F1 does not generalise (it is our bug), `hires` fails by
+−0.110, and every recipe-level explanation for the encoder gap is now
+exhausted.** Detection parity is formally off the table; the paper is a
+diagnosis.
 
 ## F1 does NOT generalise to the official SBI — it is our bug
 
@@ -84,6 +202,77 @@ to the official recipe on the periphery axis, and it is our *worst* result at
 from published SBI — removing it makes us worse. **The encoder gap has a cause
 we have not identified yet.**
 
+## Finding 8: high-resolution crops fail too — the last recipe hypothesis is closed
+
+`hires` was the one input-side variable never tested: every crop the encoder had
+ever seen was stored at 256px JPEG q95 4:2:0 and upsampled to 380.
+`crops_hires` is the same faces, same detector, same margin, at native 380px
+q100 4:4:4. Run twice, because the first run was confounded.
+
+| variant | val AUC | vs base | loss |
+|---|---|---|---|
+| base | 0.8716 | — | 0.0155 |
+| sam | 0.8747 | +0.0030 | 0.0120 |
+| **hires** | **0.7612** | **−0.1104** | 0.0183 |
+| **hires_sam** | **0.8368** | **−0.0348** | 0.0095 |
+| *hires_partialdata* | *0.7683* | *−0.1033* | *0.0164* |
+| *hires_sam_partialdata* | *0.8136* | *−0.0580* | *0.0125* |
+
+**Higher-fidelity input makes the encoder worse, decisively.** Two confounds
+were checked and both eliminated before this was believed:
+
+1. **Leak amplification — refuted by measurement.** `crops_hires` is stored q100
+   4:4:4 while `match_source_pipeline` re-encodes the blend at q88–96 with
+   cv2's default 4:2:0, so the fake differs from the real by a chroma-subsampling
+   change *plus* a quality drop — a bigger asymmetry than base. If that were the
+   cause the periphery leak would be much larger. It is not:
+   `results/shortcut_audit_crops_hires.json` gives **0.9486** against base's
+   0.937, with `pristine_bg_no_reencode` at exactly **0.5000** on both. The
+   F1 null reproduces on an independent crop set, which is a free check on the
+   audit's machinery.
+2. **Training-set size — eliminated by re-running.** The first `hires` run used
+   588 of 706 real videos (9,550 crops vs base's 11,187, −14.6%): the Aug-6
+   hires ingest was killed after writing 604 directories and `hands_off.md`
+   recorded train as "complete" when it was not. The train ingest was finished
+   (`706/720 videos, 1.7 min`) and both runs now draw on **exactly 11,187
+   crops**. The verdict did not move.
+
+### The re-run also gives a noise floor, for free
+
+`hires` and `hires_sam` have each now been trained twice, differing only by
+14.6% of the training data:
+
+| variant | partial data | full data | Δ |
+|---|---|---|---|
+| hires | 0.7683 | 0.7612 | −0.0071 |
+| hires_sam | 0.8136 | 0.8368 | **+0.0232** |
+
+The two move in *opposite* directions, so the data difference is not systematic
+and what is left is run-to-run variance of roughly **±0.02 val AUC** at this
+protocol. That is a retroactive correction to Finding 3, and it is the cheap
+version of the 3-seed check `hands_off.md` §5 item 5 asked for:
+
+- **`sam` +0.0030 and `hull` −0.0106 are inside the noise band.** "SAM buys
+  noise" is confirmed; "hull hurts" is not supported and must not be stated.
+- **Only the large effects survive**: `noleak_clean` −0.0636, `all_clean`
+  −0.0384, `hires` −0.1104.
+- Any ablation number quoted in the paper below ~0.02 needs real seeds behind
+  it or has to go.
+
+### What it closes
+
+`hands_off.md` §5 item 2: *"`hires` is the only untested cause of the encoder
+gap. If it also fails, stop trying to reach detection parity."* **It failed.**
+Every recipe-level axis — optimizer, leak, hull geometry, input resolution — has
+now been tested and none recovers the encoder gap. Finding 0 is complete and the
+decision it was gating is made: **the paper is purely diagnostic, and detection
+parity is not a goal.**
+
+The shape of the failure is worth one line, because it is the same shape as
+everything else here: `hires_sam` reaches the *lowest training loss in the whole
+ablation* (0.0095) and still lands 0.035 below base. The pseudo-task gets easier
+and transfer gets worse. That is Finding 6 again, from a fourth direction.
+
 ## Where that points
 
 Reading the official code to run the F1 test also produced a list of concrete,
@@ -104,17 +293,22 @@ Finding 0:
   `_random_affine` warps the donor affinely and the elastic term is applied to
   the *mask* instead.
 
-A faithful port is bounded work and is now a better-motivated experiment than
-`hires`, which remains untested but is a guess. Neither is a reason to reopen
-the detection-parity goal; both are reasons the paper can say *why* our
+A faithful port is bounded work and is now the ONLY untested lead, `hires`
+having since failed (Finding 8). It is not a reason to reopen the
+detection-parity goal; it is the reason the paper can say *why* our
 reimplementation underperforms rather than leaving it as "weaker in ways not
 captured".
 
 ## Also true as of today
 
-- `crops_hires` is worse than the hand-off recorded: 696 real train crop dirs
-  exist, but `manifests/ffpp_ingested_crops_hires.csv` has **8 rows**. The
-  manifest is unusable; train must be re-ingested, not just val.
+- `crops_hires` is now complete: train reals 706/720 and val all-six-methods
+  811/840, both at the config's `n_frames_test=32` so the frames match
+  `crops/` exactly. Note that training never reads
+  `ffpp_ingested_crops_hires.csv` at all — `collect_real_items` and
+  `collect_labeled_items` both hardcode `ffpp_ingested.csv` and use
+  `crops_dirname` only to redirect the directory lookup, silently skipping
+  any directory that is missing. That silent skip is what hid the 14.6%
+  shortfall in the first `hires` run.
 - Disk on the workstation is now **101 GB free**. `raw/ffpp_zip` (17 GB) is
   still redundant.
 - Every result JSON is now committed under `results/` (29 files, 5.4 MB).
